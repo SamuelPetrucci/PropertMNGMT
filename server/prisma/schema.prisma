@@ -1,0 +1,474 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  role      UserRole @default(LANDLORD)
+  firstName String?
+  lastName  String?
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  properties    Property[]    @relation("PropertyOwner")
+  workOrders    WorkOrder[]   @relation("WorkOrderCreator")
+  assignedJobs  WorkOrder[]   @relation("WorkOrderAssignee")
+  standaloneProjects StandaloneProject[] @relation("StandaloneProjectOwner")
+  tenantUnits   TenantUnit[]  @relation("TenantUser")
+  payments      Payment[]     @relation("PaymentTenant")
+  leaseAgreements LeaseAgreement[] @relation("LeaseTenant")
+  communicationsSent Communication[] @relation("CommunicationSender")
+  communicationsReceived Communication[] @relation("CommunicationReceiver")
+  tenantDocuments TenantDocument[] @relation("DocumentTenant")
+  uploadedDocuments TenantDocument[] @relation("DocumentUploader")
+  maintenanceRequests MaintenanceRequest[] @relation("RequestTenant")
+
+  @@map("users")
+}
+
+model Property {
+  id            Int      @id @default(autoincrement())
+  name          String
+  address       String
+  valuation     Float?
+  ownerId       Int
+  type          PropertyType
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Mortgage details
+  mortgageAmount      Float?
+  mortgagePayment     Float?
+  mortgageLender      String?
+  mortgageRate        Float?
+  mortgageTerm        Int?
+  mortgageStartDate   String?
+
+  // Property details
+  taxRate             String?
+  rent                Float? // <-- Added field for single-family rent
+  
+  // Relationships
+  owner       User          @relation("PropertyOwner", fields: [ownerId], references: [id])
+  units       Unit[]
+  workOrders  WorkOrder[]
+  payments    Payment[]
+  expenses    MiscExpense[]
+  tenantUnits TenantUnit[]
+  projects    Project[]
+  leaseAgreements LeaseAgreement[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@map("properties")
+}
+
+model Unit {
+  id         Int      @id @default(autoincrement())
+  unitNumber String
+  rent       Float?
+  propertyId Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  property     Property      @relation(fields: [propertyId], references: [id])
+  tenantUnits  TenantUnit[]
+  workOrders   WorkOrder[]
+  payments     Payment[]
+  leaseAgreements LeaseAgreement[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@map("units")
+}
+
+model TenantUnit {
+  id         Int      @id @default(autoincrement())
+  tenantId   Int
+  unitId     Int?
+  propertyId Int
+  rent       Float?
+  tenantName String?
+  leaseStart String?
+  leaseEnd   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  tenant    User      @relation("TenantUser", fields: [tenantId], references: [id])
+  unit      Unit?     @relation(fields: [unitId], references: [id])
+  property  Property  @relation(fields: [propertyId], references: [id])
+  workOrders WorkOrder[]
+
+  @@map("tenant_units")
+}
+
+model WorkOrder {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String
+  status      WorkOrderStatus @default(OPEN)
+  priority    Priority      @default(MEDIUM)
+  propertyId  Int
+  unitId      Int?
+  tenantUnitId Int?
+  createdById Int
+  assignedToId Int?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  property    Property      @relation(fields: [propertyId], references: [id])
+  unit        Unit?         @relation(fields: [unitId], references: [id])
+  tenantUnit  TenantUnit?   @relation(fields: [tenantUnitId], references: [id])
+  createdBy   User          @relation("WorkOrderCreator", fields: [createdById], references: [id])
+  assignedTo  User?         @relation("WorkOrderAssignee", fields: [assignedToId], references: [id])
+  maintenanceRequest MaintenanceRequest?
+
+  @@map("work_orders")
+}
+
+model Payment {
+  id         Int           @id @default(autoincrement())
+  tenantId   Int
+  propertyId Int
+  unitId     Int?
+  amount     Float
+  dueDate    String
+  paidDate   String?
+  status     PaymentStatus @default(PENDING)
+  method     String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  // Relationships
+  tenant    User      @relation("PaymentTenant", fields: [tenantId], references: [id])
+  property  Property  @relation(fields: [propertyId], references: [id])
+  unit      Unit?     @relation(fields: [unitId], references: [id])
+  leaseAgreements LeaseAgreement[]
+
+  @@map("payments")
+}
+
+model MiscExpense {
+  id         Int      @id @default(autoincrement())
+  propertyId Int
+  label      String
+  amount     Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@map("misc_expenses")
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?
+  propertyId  Int
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Float?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  property Property      @relation(fields: [propertyId], references: [id])
+  tasks    ProjectTask[]
+
+  @@map("projects")
+}
+
+model ProjectTask {
+  id          Int               @id @default(autoincrement())
+  projectId   Int
+  name        String
+  description String?
+  status      ProjectTaskStatus @default(PENDING)
+  priority    Priority          @default(MEDIUM)
+  startDate   DateTime?
+  endDate     DateTime?
+  assignedTo  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relationships
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@map("project_tasks")
+}
+
+model StandaloneProject {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Float?
+  location    String?
+  ownerId     Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  owner   User         @relation("StandaloneProjectOwner", fields: [ownerId], references: [id])
+  jobs    ProjectJob[]
+  costs   ProjectCost[]
+
+  @@map("standalone_projects")
+}
+
+model ProjectJob {
+  id          Int               @id @default(autoincrement())
+  projectId   Int
+  name        String
+  description String?
+  status      ProjectJobStatus  @default(PENDING)
+  priority    Priority          @default(MEDIUM)
+  startDate   DateTime?
+  endDate     DateTime?
+  assignedTo  String?
+  laborCost   Float?
+  materialCost Float?
+  estimatedCost Float?
+  actualCost   Float?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relationships
+  project StandaloneProject @relation(fields: [projectId], references: [id])
+
+  @@map("project_jobs")
+}
+
+model ProjectCost {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  jobId       Int?
+  description String
+  amount      Float
+  type        CostType @default(MATERIAL)
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  project StandaloneProject @relation(fields: [projectId], references: [id])
+
+  @@map("project_costs")
+}
+
+// New models for enhanced functionality
+model LeaseAgreement {
+  id                Int           @id @default(autoincrement())
+  tenantId          Int
+  propertyId        Int
+  unitId            Int?
+  rentAmount        Float
+  securityDeposit   Float?
+  leaseStartDate    String
+  leaseEndDate      String
+  status            LeaseStatus   @default(ACTIVE)
+  lateFeeAmount     Float?
+  gracePeriodDays   Int?
+  utilitiesIncluded Boolean       @default(false)
+  petPolicy         String?
+  parkingSpaces     Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relationships
+  tenant    User      @relation("LeaseTenant", fields: [tenantId], references: [id])
+  property  Property  @relation(fields: [propertyId], references: [id])
+  unit      Unit?     @relation(fields: [unitId], references: [id])
+  payments  Payment[]
+
+  @@map("lease_agreements")
+}
+
+model Communication {
+  id          Int               @id @default(autoincrement())
+  senderId    Int
+  receiverId  Int
+  subject     String
+  message     String
+  type        CommunicationType @default(MESSAGE)
+  priority    Priority          @default(MEDIUM)
+  status      CommunicationStatus @default(UNREAD)
+  relatedTo   String?           // Property ID, Work Order ID, etc.
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relationships
+  sender    User @relation("CommunicationSender", fields: [senderId], references: [id])
+  receiver  User @relation("CommunicationReceiver", fields: [receiverId], references: [id])
+
+  @@map("communications")
+}
+
+model MaintenanceRequest {
+  id          Int           @id @default(autoincrement())
+  tenantId    Int
+  propertyId  Int
+  unitId      Int?
+  title       String
+  description String
+  category    MaintenanceCategory
+  priority    Priority      @default(MEDIUM)
+  status      RequestStatus @default(OPEN)
+  images      String?       // JSON array of image URLs
+  workOrderId Int? @unique
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  tenant    User      @relation("RequestTenant", fields: [tenantId], references: [id])
+  property  Property  @relation(fields: [propertyId], references: [id])
+  unit      Unit?     @relation(fields: [unitId], references: [id])
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("maintenance_requests")
+}
+
+model TenantDocument {
+  id          Int           @id @default(autoincrement())
+  tenantId    Int
+  type        DocumentType
+  filename    String
+  fileUrl     String
+  uploadedBy  Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  tenant      User @relation("DocumentTenant", fields: [tenantId], references: [id])
+  uploadedByUser User @relation("DocumentUploader", fields: [uploadedBy], references: [id])
+
+  @@map("tenant_documents")
+}
+
+// Enums
+enum UserRole {
+  LANDLORD
+  TENANT
+  CONTRACTOR
+}
+
+enum PropertyType {
+  SINGLE_FAMILY
+  MULTI_FAMILY
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum ProjectTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum CostType {
+  MATERIAL
+  LABOR
+  EQUIPMENT
+  PERMIT
+  OTHER
+}
+
+enum LeaseStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  CANCELLED
+}
+
+enum CommunicationType {
+  MESSAGE
+  EMAIL
+  PHONE
+  LETTER
+}
+
+enum CommunicationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+enum MaintenanceCategory {
+  ELECTRICAL
+  PLUMBING
+  HVAC
+  PAINTING
+  CLEANING
+  GENERAL
+}
+
+enum RequestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DocumentType {
+  ID
+  RENTAL_CONTRACT
+  LEASE_AGREEMENT
+  INSURANCE_CERTIFICATE
+  UTILITY_BILLS
+  OTHER
+}
