@@ -10,6 +10,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import DashboardHome from './components/DashboardHome';
 import PropertyList from './components/properties/PropertyList';
 import PropertyDetails from './components/properties/PropertyDetails';
@@ -21,7 +22,10 @@ import ContractorPortal from './components/ContractorPortal';
 import ProjectManagement from './components/ProjectManagement';
 import ProjectDetails from './components/ProjectDetails';
 import MaintenanceRequests from './components/MaintenanceRequests';
-import TenantsManagement from './components/Tenants';
+import SimpleMaintenanceRequests from './components/SimpleMaintenanceRequests';
+import SimplifiedTenantManager from './components/SimplifiedTenantManager';
+import ModernTenantDashboard from './components/ModernTenantDashboard';
+import FinancialDashboard from './components/FinancialDashboard';
 import Login from './components/Auth/Login';
 import ProjectJobsDashboard from './components/ProjectJobsDashboard';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -42,21 +46,24 @@ const getApiBaseUrl = () => {
 
 const navItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+  { text: 'Financial Dashboard', icon: <AssessmentIcon />, path: '/financial-dashboard' },
   { text: 'Properties', icon: <HomeWorkIcon />, path: '/properties' },
+  { text: 'Tenant Management', icon: <PeopleIcon />, path: '/tenants' },
   { text: 'Project Management', icon: <AssignmentIcon />, path: '/project-management', dropdown: [
     { text: 'Project Management', path: '/project-management' },
     { text: 'Project Dashboard', path: '/project-management/dashboard' },
   ] },
   { text: 'Market Listings', icon: <OpenInNewIcon />, path: '/market-listings' },
-  { text: 'Tenants', icon: <PeopleIcon />, path: '/tenants' },
   { text: 'Rent Tracking', icon: <AttachMoneyIcon />, path: '/rent-tracking' },
   { text: 'Maintenance', icon: <BuildIcon />, path: '/maintenance' },
   { text: 'Payments', icon: <PaymentIcon />, path: '/payments' },
   { text: 'Profile', icon: <AccountCircleIcon />, path: '/profile' },
 ];
 
+// Removed old lease upload route - now integrated into tenant management
+
 function Tenants() {
-  return <TenantsManagement />;
+  return <ModernTenantDashboard />;
 }
 
 function Maintenance() {
@@ -232,6 +239,7 @@ function RoleBasedContent({ user, onSignOut }) {
         <Toolbar />
         <Routes>
           <Route path="/" element={<DashboardHome properties={properties} loading={loading} error={error} />} />
+          <Route path="/financial-dashboard" element={<FinancialDashboard />} />
           <Route path="/properties" element={<PropertyList properties={properties} loading={loading} error={error} />} />
           <Route path="/properties/:id" element={<PropertyDetails properties={properties} />} />
           <Route path="/project-management" element={<ProjectManagement />} />
@@ -239,8 +247,9 @@ function RoleBasedContent({ user, onSignOut }) {
           <Route path="/project-management/:id" element={<ProjectDetails />} />
           <Route path="/market-listings" element={<MarketListings />} />
           <Route path="/tenants" element={<Tenants />} />
+
           <Route path="/rent-tracking" element={<RentTracking />} />
-          <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/maintenance" element={<SimpleMaintenanceRequests />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/profile" element={<Profile user={user} onSignOut={onSignOut} />} />
         </Routes>

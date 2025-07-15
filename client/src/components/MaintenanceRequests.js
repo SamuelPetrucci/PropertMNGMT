@@ -471,7 +471,7 @@ export default function MaintenanceRequests() {
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <HomeIcon sx={{ fontSize: 16, color: 'primary.main' }} />
                       <Typography variant="body2">
-                        {workOrder.property.name}
+                        {workOrder.property ? workOrder.property.name : 'Unknown Property'}
                         {workOrder.unit && ` - Unit ${workOrder.unit.unitNumber}`}
                       </Typography>
                     </Stack>
@@ -482,7 +482,7 @@ export default function MaintenanceRequests() {
                         <PersonIcon sx={{ fontSize: 16 }} />
                       </Avatar>
                       <Typography variant="body2">
-                        {workOrder.createdBy.username}
+                        {workOrder.createdBy && workOrder.createdBy.username ? workOrder.createdBy.username : 'Unknown User'}
                       </Typography>
                     </Stack>
                   </TableCell>
@@ -493,7 +493,7 @@ export default function MaintenanceRequests() {
                           <PersonIcon sx={{ fontSize: 16 }} />
                         </Avatar>
                         <Typography variant="body2">
-                          {workOrder.assignedTo.username}
+                          {workOrder.assignedTo && workOrder.assignedTo.username ? workOrder.assignedTo.username : 'Unassigned'}
                         </Typography>
                       </Stack>
                     ) : (
@@ -748,18 +748,18 @@ export default function MaintenanceRequests() {
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary">Property</Typography>
                   <Typography variant="body1">
-                    {selectedWorkOrder.property.name}
+                    {selectedWorkOrder.property ? selectedWorkOrder.property.name : 'Unknown Property'}
                     {selectedWorkOrder.unit && ` - Unit ${selectedWorkOrder.unit.unitNumber}`}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary">Created By</Typography>
-                  <Typography variant="body1">{selectedWorkOrder.createdBy.username}</Typography>
+                  <Typography variant="body1">{selectedWorkOrder.createdBy && selectedWorkOrder.createdBy.username ? selectedWorkOrder.createdBy.username : 'Unknown User'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary">Assigned To</Typography>
                   <Typography variant="body1">
-                    {selectedWorkOrder.assignedTo ? selectedWorkOrder.assignedTo.username : 'Unassigned'}
+                    {selectedWorkOrder.assignedTo && selectedWorkOrder.assignedTo.username ? selectedWorkOrder.assignedTo.username : 'Unassigned'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -785,7 +785,7 @@ export default function MaintenanceRequests() {
                               </Avatar>
                             </ListItemAvatar>
                             <ListItemText
-                              primary={note.author.username}
+                              primary={note.author && note.author.username ? note.author.username : 'Unknown User'}
                               secondary={
                                 <React.Fragment>
                                   <Typography variant="body2" color="text.primary">

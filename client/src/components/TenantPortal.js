@@ -37,7 +37,6 @@ import InfoIcon from '@mui/icons-material/Info';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 
-// Function to get the API base URL dynamically
 const getApiBaseUrl = () => {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
@@ -54,6 +53,7 @@ export default function TenantPortal() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
   const [newWorkOrderDialog, setNewWorkOrderDialog] = useState(false);
   const [newWorkOrder, setNewWorkOrder] = useState({
     title: '',
@@ -322,53 +322,6 @@ export default function TenantPortal() {
                         </IconButton>
                       </Tooltip>
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </Paper>
-
-      {/* Payments Section */}
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
-          <PaymentIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Payment History
-        </Typography>
-
-        {payments.length === 0 ? (
-          <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-            No payment history available.
-          </Typography>
-        ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Due Date</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Paid Date</TableCell>
-                  <TableCell>Method</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{new Date(payment.dueDate).toLocaleDateString()}</TableCell>
-                    <TableCell>${typeof payment.amount === 'number' ? payment.amount.toLocaleString() : 'N/A'}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={payment.status}
-                        color={payment.status === 'paid' ? 'success' : 'warning'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {payment.paidDate ? new Date(payment.paidDate).toLocaleDateString() : '-'}
-                    </TableCell>
-                    <TableCell>{payment.method || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

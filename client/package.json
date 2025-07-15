@@ -1,13 +1,21 @@
 {
-  "name": "client",
+  "name": "property-management-web",
   "version": "0.1.0",
+  "description": "Property Management Platform Web Application",
   "private": true,
   "proxy": "http://localhost:5000",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.1.2",
     "@mui/material": "^7.1.2",
+    "axios": "^1.10.0",
     "cra-template-pwa": "2.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -15,12 +23,6 @@
     "react-scripts": "5.0.1",
     "recharts": "^3.0.0",
     "web-vitals": "^5.0.3"
-  },
-  "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

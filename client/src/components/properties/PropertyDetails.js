@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Box, Typography, Stack, Paper, Grid, Chip, Divider, Button } from '@mui/material';
+import { Box, Typography, Stack, Paper, Grid, Chip, Divider, Button, Dialog, TextField, IconButton, Alert, Tooltip } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -10,6 +10,10 @@ import ApartmentIcon from '@mui/icons-material/Apartment';
 import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
+import CancelIcon from '@mui/icons-material/Cancel';
+import AddPropertyForm from './AddPropertyForm';
 
 function PropertyDetails() {
   const { id } = useParams();
@@ -17,31 +21,119 @@ function PropertyDetails() {
   const [property, setProperty] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
+  const [inlineEditMode, setInlineEditMode] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({ name: '', address: '', rent: '' });
+  const [saving, setSaving] = React.useState(false);
+  const [successMessage, setSuccessMessage] = React.useState('');
 
   const handleBackClick = () => {
     navigate('/properties');
   };
 
-  React.useEffect(() => {
-    const token = localStorage.getItem('token');
-    fetch('/api/properties', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        return res.json();
-      })
-      .then((data) => {
-        const found = data.find((p) => String(p.id) === String(id));
-        setProperty(found);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
+  const handleEditClick = () => {
+    setEditDialogOpen(true);
+  };
+
+  const handleEditDialogClose = () => {
+    setEditDialogOpen(false);
+  };
+
+  const handlePropertyEdited = () => {
+    console.log('Property edited, refreshing...');
+    setEditDialogOpen(false);
+    // Refresh the property data
+    fetchPropertyData();
+  };
+
+  const handleInlineEditStart = () => {
+    setEditForm({
+      name: property.name || '',
+      address: property.address || '',
+      rent: property.rent || ''
+    });
+    setInlineEditMode(true);
+  };
+
+  const handleInlineEditCancel = () => {
+    setInlineEditMode(false);
+    setEditForm({ name: '', address: '', rent: '' });
+  };
+
+  const handleInlineEditSave = async () => {
+    try {
+      setSaving(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/properties/${property.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: editForm.name,
+          address: editForm.address,
+          rent: editForm.rent ? Number(editForm.rent) : null
+        })
       });
+
+      if (response.ok) {
+        setInlineEditMode(false);
+        setSuccessMessage('Property updated successfully!');
+        fetchPropertyData();
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        throw new Error('Failed to update property');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Keyboard shortcuts for inline editing
+  React.useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (inlineEditMode) {
+        if (event.key === 'Escape') {
+          handleInlineEditCancel();
+        } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          handleInlineEditSave();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [inlineEditMode, editForm]);
+
+  const fetchPropertyData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/properties', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch');
+      
+      const data = await response.json();
+      const found = data.find((p) => String(p.id) === String(id));
+      setProperty(found);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchPropertyData();
   }, [id]);
 
   if (loading) return (
@@ -52,7 +144,9 @@ function PropertyDetails() {
   
   if (error) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-      <Typography color="error" variant="h6">{error}</Typography>
+      <Alert severity="error" sx={{ maxWidth: 600 }}>
+        <Typography variant="h6">{error}</Typography>
+      </Alert>
     </Box>
   );
   
@@ -88,41 +182,168 @@ function PropertyDetails() {
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* Success Message */}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {successMessage}
+        </Alert>
+      )}
+      
       {/* Header Section */}
       <Paper elevation={2} sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)', color: 'white', position: 'relative' }}>
         {/* Back Button */}
-        <Button
-          variant="outlined"
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBackClick}
-          sx={{
-            position: 'absolute',
-            top: -8,
-            left: 16,
-            color: 'white',
-            borderColor: 'rgba(255,255,255,0.3)',
-            '&:hover': {
-              borderColor: 'white',
-              backgroundColor: 'rgba(255,255,255,0.1)',
-            },
-            zIndex: 2
-          }}
-        >
-          Back to Properties
-        </Button>
+        <Stack direction="row" spacing={2} sx={{ position: 'absolute', top: -8, left: 16, zIndex: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBackClick}
+            sx={{
+              color: 'white',
+              borderColor: 'rgba(255,255,255,0.3)',
+              '&:hover': {
+                borderColor: 'white',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+              },
+            }}
+          >
+            Back to Properties
+          </Button>
+          <Tooltip title="Open full property editor with all fields">
+            <Button
+              variant="contained"
+              startIcon={<EditIcon />}
+              onClick={handleEditClick}
+              sx={{
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                },
+              }}
+            >
+              Full Edit
+            </Button>
+          </Tooltip>
+          <Tooltip title="Quick edit of property name, address, and rent">
+            <Button
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={handleInlineEditStart}
+              sx={{
+                color: 'white',
+                borderColor: 'rgba(255,255,255,0.3)',
+                '&:hover': {
+                  borderColor: 'white',
+                  backgroundColor: 'rgba(255,255,255,0.1)',
+                },
+              }}
+            >
+              Quick Edit
+            </Button>
+          </Tooltip>
+        </Stack>
         
         <Stack direction="row" alignItems="center" spacing={2} mb={2} sx={{ pl: 12 }}>
           <HomeIcon sx={{ fontSize: 40 }} />
-          <Box>
-            <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-              {property.name}
-            </Typography>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <LocationOnIcon fontSize="small" />
-              <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                {property.address}
-              </Typography>
-            </Stack>
+          <Box sx={{ flexGrow: 1 }}>
+            {inlineEditMode ? (
+              <Stack spacing={2}>
+                <TextField
+                  fullWidth
+                  label="Property Name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  variant="outlined"
+                  sx={{ 
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: 'rgba(255,255,255,0.1)',
+                      color: 'white',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
+                      '&.Mui-focused fieldset': { borderColor: 'white' }
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                    '& .MuiInputBase-input': { color: 'white' }
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Address"
+                  value={editForm.address}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                  variant="outlined"
+                  sx={{ 
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: 'rgba(255,255,255,0.1)',
+                      color: 'white',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
+                      '&.Mui-focused fieldset': { borderColor: 'white' }
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                    '& .MuiInputBase-input': { color: 'white' }
+                  }}
+                />
+                {property.type === 'single-family' && (
+                  <TextField
+                    fullWidth
+                    label="Monthly Rent"
+                    type="number"
+                    value={editForm.rent}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, rent: e.target.value }))}
+                    variant="outlined"
+                    sx={{ 
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'rgba(255,255,255,0.1)',
+                        color: 'white',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                        '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
+                        '&.Mui-focused fieldset': { borderColor: 'white' }
+                      },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                      '& .MuiInputBase-input': { color: 'white' }
+                    }}
+                  />
+                )}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Tooltip title="Save changes (Ctrl+Enter)">
+                    <IconButton
+                      onClick={handleInlineEditSave}
+                      disabled={saving}
+                      sx={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.2)' }}
+                    >
+                      <SaveIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Cancel editing (Esc)">
+                    <IconButton
+                      onClick={handleInlineEditCancel}
+                      disabled={saving}
+                      sx={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.2)' }}
+                    >
+                      <CancelIcon />
+                    </IconButton>
+                  </Tooltip>
+                  {saving && (
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Saving...
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            ) : (
+              <>
+                <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                  {property.name}
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <LocationOnIcon fontSize="small" />
+                  <Typography variant="h6" sx={{ opacity: 0.9 }}>
+                    {property.address}
+                  </Typography>
+                </Stack>
+              </>
+            )}
           </Box>
         </Stack>
         <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ pl: 12 }}>
@@ -136,8 +357,18 @@ function PropertyDetails() {
             label={`Owner: ${property.owner}`} 
             sx={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}
           />
-        </Stack>
-      </Paper>
+                  </Stack>
+        </Paper>
+
+      {/* Edit Property Dialog */}
+      {editDialogOpen && property && (
+        <AddPropertyForm
+          onPropertyAdded={handlePropertyEdited}
+          onCancel={handleEditDialogClose}
+          initialData={property}
+          isEdit
+        />
+      )}
 
       {/* Financial Overview Cards */}
       <Grid container spacing={3} mb={3}>

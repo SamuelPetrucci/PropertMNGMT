@@ -1,26 +1,39 @@
 {
-  "name": "server",
+  "name": "property-management-api",
   "version": "1.0.0",
+  "description": "Property Management Platform API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon index.js",
+    "build": "echo 'No build step required for Node.js'",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "node db.js"
   },
   "prisma": {
     "seed": "node db.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "property-management",
+    "api",
+    "express",
+    "prisma"
+  ],
+  "author": "Samuel Petrucci",
+  "license": "MIT",
   "dependencies": {
     "@prisma/client": "^6.10.1",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.2",
     "prisma": "^6.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
   }
 }

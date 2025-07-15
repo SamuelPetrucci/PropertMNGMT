@@ -1,12 +1,20 @@
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+// Lazy initialization - only create client when first used
+let prismaClient = null;
+
+const getPrisma = () => {
+  if (!prismaClient) {
+    prismaClient = new PrismaClient();
+  }
+  return prismaClient;
+};
 
 // Database service functions
 const db = {
   // User operations
   async createUser(userData) {
-    return await prisma.user.create({
+    return await getPrisma().user.create({
       data: {
         username: userData.username,
         password: userData.password, // In production, hash this
@@ -20,7 +28,7 @@ const db = {
   },
 
   async findUserByUsername(username) {
-    return await prisma.user.findUnique({
+    return await getPrisma().user.findUnique({
       where: { username },
     });
   },
@@ -37,7 +45,7 @@ const db = {
 
   // Property operations
   async getProperties() {
-    const properties = await prisma.property.findMany({
+    const properties = await getPrisma().property.findMany({
       include: {
         units: {
           include: {
@@ -128,7 +136,7 @@ const db = {
     };
 
     // Create the property first
-    const property = await prisma.property.create({
+    const property = await getPrisma().property.create({
       data: {
         name: propertyData.name,
         address: propertyData.address,
@@ -168,14 +176,14 @@ const db = {
       propertyData.tenant && propertyData.tenant.trim()
     ) {
       // Find or create tenant user
-      let tenantUser = await prisma.user.findFirst({
+      let tenantUser = await getPrisma().user.findFirst({
         where: {
           username: propertyData.tenant.toLowerCase().replace(/\s+/g, '_'),
           role: 'TENANT',
         },
       });
       if (!tenantUser) {
-        tenantUser = await prisma.user.create({
+        tenantUser = await getPrisma().user.create({
           data: {
             username: propertyData.tenant.toLowerCase().replace(/\s+/g, '_'),
             password: 'default_password', // In production, generate a proper password
@@ -186,7 +194,7 @@ const db = {
         });
       }
       // Create tenant unit
-      await prisma.tenantUnit.create({
+      await getPrisma().tenantUnit.create({
         data: {
           tenantId: tenantUser.id,
           propertyId: property.id,
@@ -206,14 +214,14 @@ const db = {
       for (const unit of propertyData.units) {
         if (unit.tenant && unit.tenant.trim()) {
           // Find or create tenant user
-          let tenantUser = await prisma.user.findFirst({
+          let tenantUser = await getPrisma().user.findFirst({
             where: {
               username: unit.tenant.toLowerCase().replace(/\s+/g, '_'),
               role: 'TENANT',
             },
           });
           if (!tenantUser) {
-            tenantUser = await prisma.user.create({
+            tenantUser = await getPrisma().user.create({
               data: {
                 username: unit.tenant.toLowerCase().replace(/\s+/g, '_'),
                 password: 'default_password',
@@ -228,7 +236,7 @@ const db = {
             (u) => u.unitNumber === unit.unitNumber
           );
           if (createdUnit) {
-            await prisma.tenantUnit.create({
+            await getPrisma().tenantUnit.create({
               data: {
                 tenantId: tenantUser.id,
                 propertyId: property.id,
@@ -256,23 +264,21 @@ const db = {
     };
 
     // First, delete existing units if this is a multi-family property with new units
-    if (propertyData.type === 'multi-family' && propertyData.units && propertyData.units.length > 0) {
-      await prisma.unit.deleteMany({
-        where: { propertyId: parseInt(propertyId) }
-      });
-    }
+    await getPrisma().unit.deleteMany({
+      where: { propertyId: parseInt(propertyId) }
+    });
 
     // Handle tenant data for single-family properties
     if (propertyData.type === 'single-family' && propertyData.tenant) {
       // Delete existing tenant units for this property
-      await prisma.tenantUnit.deleteMany({
+      await getPrisma().tenantUnit.deleteMany({
         where: { propertyId: parseInt(propertyId) }
       });
 
       // Create new tenant unit if tenant name is provided
       if (propertyData.tenant.trim()) {
         // Find or create a tenant user
-        let tenantUser = await prisma.user.findFirst({
+        let tenantUser = await getPrisma().user.findFirst({
           where: { 
             username: propertyData.tenant.toLowerCase().replace(/\s+/g, '_'),
             role: 'TENANT'
@@ -280,7 +286,7 @@ const db = {
         });
 
         if (!tenantUser) {
-          tenantUser = await prisma.user.create({
+          tenantUser = await getPrisma().user.create({
             data: {
               username: propertyData.tenant.toLowerCase().replace(/\s+/g, '_'),
               password: 'default_password', // In production, generate a proper password
@@ -292,7 +298,7 @@ const db = {
         }
 
         // Create tenant unit
-        await prisma.tenantUnit.create({
+        await getPrisma().tenantUnit.create({
           data: {
             tenantId: tenantUser.id,
             propertyId: parseInt(propertyId),
@@ -308,7 +314,7 @@ const db = {
     // Handle tenant data for multi-family properties
     if (propertyData.type === 'multi-family' && propertyData.units) {
       // Delete existing tenant units for this property
-      await prisma.tenantUnit.deleteMany({
+      await getPrisma().tenantUnit.deleteMany({
         where: { propertyId: parseInt(propertyId) }
       });
 
@@ -316,7 +322,7 @@ const db = {
       for (const unit of propertyData.units) {
         if (unit.tenant && unit.tenant.trim()) {
           // Find or create a tenant user
-          let tenantUser = await prisma.user.findFirst({
+          let tenantUser = await getPrisma().user.findFirst({
             where: { 
               username: unit.tenant.toLowerCase().replace(/\s+/g, '_'),
               role: 'TENANT'
@@ -324,7 +330,7 @@ const db = {
           });
 
           if (!tenantUser) {
-            tenantUser = await prisma.user.create({
+            tenantUser = await getPrisma().user.create({
               data: {
                 username: unit.tenant.toLowerCase().replace(/\s+/g, '_'),
                 password: 'default_password',
@@ -336,7 +342,7 @@ const db = {
           }
 
           // Find the unit we just created
-          const createdUnit = await prisma.unit.findFirst({
+          const createdUnit = await getPrisma().unit.findFirst({
             where: { 
               propertyId: parseInt(propertyId),
               unitNumber: unit.unitNumber
@@ -345,7 +351,7 @@ const db = {
 
           if (createdUnit) {
             // Create tenant unit linked to this unit
-            await prisma.tenantUnit.create({
+            await getPrisma().tenantUnit.create({
               data: {
                 tenantId: tenantUser.id,
                 propertyId: parseInt(propertyId),
@@ -361,7 +367,7 @@ const db = {
       }
     }
 
-    return await prisma.property.update({
+    return await getPrisma().property.update({
       where: { id: parseInt(propertyId) },
       data: {
         name: propertyData.name,
@@ -371,7 +377,7 @@ const db = {
         mortgageAmount: propertyData.mortgage?.amount ? Number(propertyData.mortgage.amount) : null,
         mortgagePayment: propertyData.mortgage?.monthlyPayment ? Number(propertyData.mortgage.monthlyPayment) : null,
         mortgageLender: propertyData.mortgage?.lender,
-        mortgageRate: propertyData.mortgage?.rate ? Number(propertyData.mortgage?.rate) : null,
+        mortgageRate: propertyData.mortgage?.rate ? Number(propertyData.mortgage.rate) : null,
         mortgageTerm: propertyData.mortgage?.term ? Number(propertyData.mortgage.term) : null,
         mortgageStartDate: propertyData.mortgage?.startDate,
         taxRate: propertyData.taxRate,
@@ -406,27 +412,27 @@ const db = {
 
   async deleteProperty(propertyId) {
     // Delete related records first to avoid foreign key constraint errors
-    await prisma.tenantUnit.deleteMany({
+    await getPrisma().tenantUnit.deleteMany({
       where: { propertyId: parseInt(propertyId) },
     });
     
-    await prisma.unit.deleteMany({
+    await getPrisma().unit.deleteMany({
       where: { propertyId: parseInt(propertyId) },
     });
     
-    await prisma.miscExpense.deleteMany({
+    await getPrisma().miscExpense.deleteMany({
       where: { propertyId: parseInt(propertyId) },
     });
     
     // Now delete the property
-    return await prisma.property.delete({
+    return await getPrisma().property.delete({
       where: { id: parseInt(propertyId) },
     });
   },
 
   // Standalone Project operations
   async getStandaloneProjects() {
-    const projects = await prisma.standaloneProject.findMany({
+    const projects = await getPrisma().standaloneProject.findMany({
       include: {
         jobs: true,
         costs: true,
@@ -474,7 +480,7 @@ const db = {
   },
 
   async getStandaloneProjectById(projectId) {
-    const project = await prisma.standaloneProject.findUnique({
+    const project = await getPrisma().standaloneProject.findUnique({
       where: { id: parseInt(projectId) },
       include: {
         jobs: true, // costs include removed
@@ -537,7 +543,7 @@ const db = {
   },
 
   async createStandaloneProject(projectData) {
-    return await prisma.standaloneProject.create({
+    return await getPrisma().standaloneProject.create({
       data: {
         name: projectData.name,
         description: projectData.description,
@@ -552,7 +558,7 @@ const db = {
   },
 
   async updateStandaloneProject(projectId, projectData) {
-    return await prisma.standaloneProject.update({
+    return await getPrisma().standaloneProject.update({
       where: { id: parseInt(projectId) },
       data: {
         name: projectData.name,
@@ -569,23 +575,23 @@ const db = {
   async deleteStandaloneProject(projectId) {
     // Delete in order to handle foreign key constraints
     // First delete all costs associated with the project
-    await prisma.projectCost.deleteMany({
+    await getPrisma().projectCost.deleteMany({
       where: { projectId: parseInt(projectId) },
     });
 
     // Delete all jobs associated with the project
-    await prisma.projectJob.deleteMany({
+    await getPrisma().projectJob.deleteMany({
       where: { projectId: parseInt(projectId) },
     });
 
     // Finally delete the project itself
-    return await prisma.standaloneProject.delete({
+    return await getPrisma().standaloneProject.delete({
       where: { id: parseInt(projectId) },
     });
   },
 
   async getProjectJobs(projectId) {
-    return await prisma.projectJob.findMany({
+    return await getPrisma().projectJob.findMany({
       where: { projectId: parseInt(projectId) },
     });
   },
@@ -596,7 +602,7 @@ const db = {
     const materialCost = jobData.materialCost ? Number(jobData.materialCost) : 0;
     const estimatedCost = laborCost + materialCost;
 
-    return await prisma.projectJob.create({
+    return await getPrisma().projectJob.create({
       data: {
         projectId: parseInt(jobData.projectId),
         name: jobData.name,
@@ -618,7 +624,7 @@ const db = {
     const materialCost = jobData.materialCost ? Number(jobData.materialCost) : 0;
     const estimatedCost = laborCost + materialCost;
 
-    return await prisma.projectJob.update({
+    return await getPrisma().projectJob.update({
       where: { id: parseInt(jobId) },
       data: {
         name: jobData.name,
@@ -635,19 +641,19 @@ const db = {
   },
 
   async deleteProjectJob(jobId) {
-    return await prisma.projectJob.delete({
+    return await getPrisma().projectJob.delete({
       where: { id: parseInt(jobId) },
     });
   },
 
   async getProjectCosts(projectId) {
-    return await prisma.projectCost.findMany({
+    return await getPrisma().projectCost.findMany({
       where: { projectId: parseInt(projectId) },
     });
   },
 
   async createProjectCost(costData) {
-    return await prisma.projectCost.create({
+    return await getPrisma().projectCost.create({
       data: {
         projectId: parseInt(costData.projectId),
         jobId: costData.jobId ? parseInt(costData.jobId) : null,
@@ -660,14 +666,14 @@ const db = {
   },
 
   async deleteProjectCost(costId) {
-    return await prisma.projectCost.delete({
+    return await getPrisma().projectCost.delete({
       where: { id: parseInt(costId) },
     });
   },
 
   // Work order operations
   async getWorkOrders() {
-    return await prisma.workOrder.findMany({
+    return await getPrisma().workOrder.findMany({
       include: {
         property: true,
         unit: true,
@@ -688,7 +694,7 @@ const db = {
       throw new Error('Valid propertyId is required');
     }
 
-    return await prisma.workOrder.create({
+    return await getPrisma().workOrder.create({
       data: {
         title: workOrderData.title,
         description: workOrderData.description,
@@ -704,12 +710,13 @@ const db = {
   },
 
   async updateWorkOrder(workOrderId, updateData) {
-    return await prisma.workOrder.update({
+    return await getPrisma().workOrder.update({
       where: { id: parseInt(workOrderId) },
       data: {
         status: updateData.status,
         notes: updateData.notes,
         updatedAt: new Date(),
+        ...(updateData.assignedToId !== undefined ? { assignedToId: updateData.assignedToId ? parseInt(updateData.assignedToId) : null } : {}),
       },
       include: {
         property: true,
@@ -723,7 +730,7 @@ const db = {
 
   // Contractor operations
   async getContractors() {
-    return await prisma.user.findMany({
+    return await getPrisma().user.findMany({
       where: { role: 'CONTRACTOR' },
       select: {
         id: true,
@@ -738,7 +745,7 @@ const db = {
 
   // Tenant operations
   async getTenantInfo(tenantId) {
-    const tenant = await prisma.user.findUnique({
+    const tenant = await getPrisma().user.findUnique({
       where: { id: parseInt(tenantId) },
       include: {
         tenantUnits: {
@@ -781,15 +788,16 @@ const db = {
   },
 
   async getTenantPayments(tenantId) {
-    return await prisma.payment.findMany({
+    return await getPrisma().payment.findMany({
       where: { tenantId: parseInt(tenantId) },
       orderBy: { dueDate: 'desc' },
     });
   },
 
   // Enhanced Tenant Management Operations
+  // Restore original getAllTenants for tenant management
   async getAllTenants(landlordId) {
-    const properties = await prisma.property.findMany({
+    const properties = await getPrisma().property.findMany({
       where: { ownerId: parseInt(landlordId) },
       include: {
         tenantUnits: {
@@ -866,7 +874,7 @@ const db = {
 
     // Add payment information for each tenant
     for (const tenant of tenantMap.values()) {
-      const payments = await prisma.payment.findMany({
+      const payments = await getPrisma().payment.findMany({
         where: { tenantId: tenant.id },
         orderBy: { dueDate: 'desc' }
       });
@@ -876,10 +884,62 @@ const db = {
     return Array.from(tenantMap.values());
   },
 
+  // New: flat array for rent tracking
+  async getTenantAssignmentsFlat(landlordId) {
+    const properties = await getPrisma().property.findMany({
+      where: { ownerId: parseInt(landlordId) },
+      include: {
+        tenantUnits: {
+          include: {
+            tenant: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                role: true,
+              }
+            },
+            unit: true
+          }
+        },
+        units: true
+      }
+    });
+    const rows = [];
+    for (const property of properties) {
+      for (const tenantUnit of property.tenantUnits) {
+        if (!tenantUnit.tenant) continue;
+        const payments = await getPrisma().payment.findMany({
+          where: {
+            tenantId: tenantUnit.tenant.id,
+            propertyId: property.id,
+            unitId: tenantUnit.unitId || undefined,
+          },
+          orderBy: { dueDate: 'asc' }
+        });
+        rows.push({
+          tenant: `${tenantUnit.tenant.firstName || ''} ${tenantUnit.tenant.lastName || ''}`.trim() || tenantUnit.tenant.username,
+          propertyName: property.name,
+          propertyId: property.id,
+          unitNumber: tenantUnit.unit?.unitNumber || null,
+          rent: tenantUnit.rent || 0,
+          leaseStart: tenantUnit.leaseStart || '',
+          leaseEnd: tenantUnit.leaseEnd || '',
+          payments: payments || [],
+          type: property.type === 'SINGLE_FAMILY' ? 'single-family' : 'multi-family',
+        });
+      }
+    }
+    return rows;
+  },
+
   async createTenant(tenantData) {
     const { landlordId, ...userData } = tenantData;
     // Always create a new user account for tenant
-    const tenant = await prisma.user.create({
+    const tenant = await getPrisma().user.create({
       data: {
         username: userData.username,
         password: userData.password || 'default_password',
@@ -892,7 +952,7 @@ const db = {
     });
     // Create tenant unit if property and unit info provided
     if (userData.propertyId) {
-      await prisma.tenantUnit.create({
+      await getPrisma().tenantUnit.create({
         data: {
           tenantId: tenant.id,
           propertyId: parseInt(userData.propertyId),
@@ -901,7 +961,21 @@ const db = {
           tenantName: `${userData.firstName} ${userData.lastName}`,
         }
       });
-      // Optionally, create a lease agreement here if you want
+      // Create a lease agreement for this tenant
+      if (userData.leaseStartDate && userData.leaseEndDate) {
+        await getPrisma().leaseAgreement.create({
+          data: {
+            tenantId: tenant.id,
+            propertyId: parseInt(userData.propertyId),
+            unitId: userData.unitId ? parseInt(userData.unitId) : null,
+            rentAmount: userData.rentAmount ? Number(userData.rentAmount) : null,
+            securityDeposit: userData.securityDeposit ? Number(userData.securityDeposit) : null,
+            leaseStartDate: userData.leaseStartDate,
+            leaseEndDate: userData.leaseEndDate,
+            status: 'ACTIVE',
+          }
+        });
+      }
     }
     return {
       ...tenant,
@@ -910,16 +984,13 @@ const db = {
   },
 
   async getTenantById(tenantId, userId, userRole) {
-    const tenant = await prisma.user.findUnique({
+    const tenant = await getPrisma().user.findUnique({
       where: { id: parseInt(tenantId) },
       include: {
         tenantUnits: {
           include: {
             property: true,
-            unit: true,
-            leaseAgreements: {
-              orderBy: { createdAt: 'desc' }
-            }
+            unit: true
           }
         },
         payments: {
@@ -946,15 +1017,41 @@ const db = {
       if (!hasAccess) return null;
     }
 
+    // Fetch all lease documents for this tenant
+    const leaseDocuments = await getPrisma().tenantDocument.findMany({
+      where: {
+        tenantId: tenant.id,
+        type: 'LEASE_AGREEMENT',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Get lease agreements for this tenant
+    const leaseAgreements = await getPrisma().leaseAgreement.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        property: true,
+        unit: true
+      }
+    });
+
+    // For each lease, attach its documents
+    for (const lease of leaseAgreements) {
+      lease.documents = leaseDocuments.filter(doc => Number(doc.leaseId) === Number(lease.id));
+    }
+
     return {
       ...tenant,
-      password: undefined
+      password: undefined,
+      leaseDocuments,
+      leaseAgreements,
     };
   },
 
   async updateTenant(tenantId, updateData, landlordId) {
     // Verify landlord owns property where tenant lives
-    const tenant = await prisma.user.findUnique({
+    const tenant = await getPrisma().user.findUnique({
       where: { id: parseInt(tenantId) },
       include: {
         tenantUnits: {
@@ -972,7 +1069,7 @@ const db = {
     );
     if (!hasAccess) throw new Error('Access denied');
 
-    return await prisma.user.update({
+    return await getPrisma().user.update({
       where: { id: parseInt(tenantId) },
       data: {
         firstName: updateData.firstName,
@@ -995,7 +1092,7 @@ const db = {
   // Lease Management
   async createLease(tenantId, leaseData, landlordId) {
     // Verify landlord owns the property
-    const property = await prisma.property.findFirst({
+    const property = await getPrisma().property.findFirst({
       where: { 
         id: parseInt(leaseData.propertyId),
         ownerId: parseInt(landlordId)
@@ -1003,13 +1100,13 @@ const db = {
     });
     if (!property) throw new Error('Property not found or access denied');
     // Terminate any existing assignments for this tenant
-    await prisma.tenantUnit.deleteMany({ where: { tenantId: parseInt(tenantId) } });
-    await prisma.leaseAgreement.updateMany({
+    await getPrisma().tenantUnit.deleteMany({ where: { tenantId: parseInt(tenantId) } });
+    await getPrisma().leaseAgreement.updateMany({
       where: { tenantId: parseInt(tenantId), status: 'ACTIVE' },
       data: { status: 'TERMINATED' }
     });
     // Upsert TenantUnit assignment
-    await prisma.tenantUnit.create({
+    await getPrisma().tenantUnit.create({
       data: {
         tenantId: parseInt(tenantId),
         propertyId: parseInt(leaseData.propertyId),
@@ -1019,7 +1116,7 @@ const db = {
         leaseEnd: leaseData.leaseEndDate,
       }
     });
-    return await prisma.leaseAgreement.create({
+    return await getPrisma().leaseAgreement.create({
       data: {
         tenantId: parseInt(tenantId),
         propertyId: parseInt(leaseData.propertyId),
@@ -1052,7 +1149,7 @@ const db = {
   // Payment Management
   async getAllPayments(userId, userRole) {
     if (userRole === 'TENANT') {
-      return await prisma.payment.findMany({
+      return await getPrisma().payment.findMany({
         where: { tenantId: parseInt(userId) },
         include: {
           property: true,
@@ -1062,14 +1159,14 @@ const db = {
       });
     } else if (userRole === 'LANDLORD') {
       // Get payments for all properties owned by landlord
-      const properties = await prisma.property.findMany({
+      const properties = await getPrisma().property.findMany({
         where: { ownerId: parseInt(userId) },
         select: { id: true }
       });
       
       const propertyIds = properties.map(p => p.id);
       
-      return await prisma.payment.findMany({
+      return await getPrisma().payment.findMany({
         where: { propertyId: { in: propertyIds } },
         include: {
           tenant: {
@@ -1091,7 +1188,7 @@ const db = {
   },
 
   async createPayment(paymentData) {
-    return await prisma.payment.create({
+    return await getPrisma().payment.create({
       data: {
         tenantId: parseInt(paymentData.tenantId),
         propertyId: parseInt(paymentData.propertyId),
@@ -1117,7 +1214,7 @@ const db = {
   },
 
   async updatePayment(paymentId, updateData, userId, userRole) {
-    const payment = await prisma.payment.findUnique({
+    const payment = await getPrisma().payment.findUnique({
       where: { id: parseInt(paymentId) },
       include: {
         tenant: true,
@@ -1136,7 +1233,7 @@ const db = {
       throw new Error('Access denied');
     }
 
-    return await prisma.payment.update({
+    return await getPrisma().payment.update({
       where: { id: parseInt(paymentId) },
       data: {
         status: updateData.status,
@@ -1159,7 +1256,7 @@ const db = {
 
   // Communication System
   async createCommunication(communicationData) {
-    return await prisma.communication.create({
+    return await getPrisma().communication.create({
       data: {
         senderId: parseInt(communicationData.senderId),
         receiverId: parseInt(communicationData.receiverId),
@@ -1191,7 +1288,7 @@ const db = {
   },
 
   async getCommunications(userId, userRole) {
-    return await prisma.communication.findMany({
+    return await getPrisma().communication.findMany({
       where: {
         OR: [
           { senderId: parseInt(userId) },
@@ -1222,7 +1319,7 @@ const db = {
 
   // Property-specific tenant operations
   async updateTenantUnit(propertyId, unitNumber, updateData) {
-    const property = await prisma.property.findUnique({
+    const property = await getPrisma().property.findUnique({
       where: { id: parseInt(propertyId) },
       include: {
         units: {
@@ -1239,7 +1336,7 @@ const db = {
     let unit = property.units[0];
     if (!unit) {
       // Create unit if it doesn't exist
-      unit = await prisma.unit.create({
+      unit = await getPrisma().unit.create({
         data: {
           unitNumber: unitNumber,
           propertyId: parseInt(propertyId),
@@ -1254,7 +1351,7 @@ const db = {
       const tenantUnit = unit.tenantUnits[0];
       if (tenantUnit) {
         // Clear existing payments and create new ones
-        await prisma.payment.deleteMany({
+        await getPrisma().payment.deleteMany({
           where: { 
             tenantId: tenantUnit.tenantId,
             propertyId: parseInt(propertyId),
@@ -1263,7 +1360,7 @@ const db = {
         });
 
         for (const payment of updateData.payments) {
-          await prisma.payment.create({
+          await getPrisma().payment.create({
             data: {
               tenantId: tenantUnit.tenantId,
               propertyId: parseInt(propertyId),
@@ -1313,7 +1410,7 @@ const db = {
       email: 'mike@example.com',
     });
 
-    // Create property with tenant info and misc expenses
+    // Create single-family property with tenant info and misc expenses
     const sunsetVillas = await this.createProperty({
       name: 'Sunset Villas',
       address: '123 Main St',
@@ -1340,6 +1437,47 @@ const db = {
       ],
     });
 
+    // Create multi-family property with units
+    const oakRidgeApartments = await this.createProperty({
+      name: 'Oak Ridge Apartments',
+      address: '456 Oak Street',
+      valuation: 500000,
+      ownerId: alice.id,
+      type: 'multi-family',
+      mortgage: {
+        amount: 250000,
+        monthlyPayment: 1500,
+        lender: 'Bank B',
+        rate: 4.0,
+        term: 30,
+        startDate: '2020-06-01',
+      },
+      taxRate: '1.5',
+      units: [
+        {
+          unitNumber: '1A',
+          rent: 1200,
+        },
+        {
+          unitNumber: '1B',
+          rent: 1300,
+        },
+        {
+          unitNumber: '2A',
+          rent: 1400,
+        },
+        {
+          unitNumber: '2B',
+          rent: 1500,
+        },
+      ],
+      miscExpenses: [
+        { label: 'Property Insurance', amount: 200 },
+        { label: 'Landscaping', amount: 150 },
+        { label: 'Pool Maintenance', amount: 100 },
+      ],
+    });
+
     // Create standalone project
     const kitchenRemodel = await this.createStandaloneProject({
       name: 'Kitchen Remodel',
@@ -1357,11 +1495,14 @@ const db = {
     console.log('Landlord: alice / password123');
     console.log('Tenant: john_doe / tenant123');
     console.log('Contractor: mike_contractor / contractor123');
+    console.log('\nSample Properties:');
+    console.log('- Sunset Villas (Single Family): $1800/month');
+    console.log('- Oak Ridge Apartments (Multi-Family): 4 units with varying rent');
   },
 
   // End active lease agreement for a tenant/property/unit
   async endLeaseAgreement(tenantId, propertyId, unitId) {
-    await prisma.leaseAgreement.updateMany({
+    await getPrisma().leaseAgreement.updateMany({
       where: {
         tenantId,
         propertyId,
@@ -1374,7 +1515,7 @@ const db = {
 
   // Delete tenantUnit assignment for a tenant/property/unit
   async deleteTenantUnit(tenantId, propertyId, unitId) {
-    await prisma.tenantUnit.deleteMany({
+    await getPrisma().tenantUnit.deleteMany({
       where: {
         tenantId,
         propertyId,
@@ -1385,33 +1526,68 @@ const db = {
 
   async deleteTenantCascade(tenantId, landlordId) {
     // Only allow if landlord owns at least one property for this tenant
-    const tenant = await prisma.user.findUnique({
+    const tenant = await getPrisma().user.findUnique({
       where: { id: parseInt(tenantId) },
       include: {
         tenantUnits: { include: { property: true } },
         leaseAgreements: true,
         payments: true,
+        communicationsSent: true,
+        communicationsReceived: true,
+        tenantDocuments: true,
+        uploadedDocuments: true,
+        maintenanceRequests: true,
+        workOrders: true,
+        assignedJobs: true,
       }
     });
     if (!tenant) throw new Error('Tenant not found');
     const ownsAny = tenant.tenantUnits.some(tu => tu.property.ownerId === parseInt(landlordId));
     if (!ownsAny) throw new Error('Access denied');
-    // Delete all related records
-    await prisma.tenantUnit.deleteMany({ where: { tenantId: parseInt(tenantId) } });
-    await prisma.leaseAgreement.deleteMany({ where: { tenantId: parseInt(tenantId) } });
-    await prisma.payment.deleteMany({ where: { tenantId: parseInt(tenantId) } });
-    await prisma.user.delete({ where: { id: parseInt(tenantId) } });
+    
+    // Delete all related records in the correct order
+    await getPrisma().maintenanceRequest.deleteMany({ where: { tenantId: parseInt(tenantId) } });
+    await getPrisma().communication.deleteMany({ 
+      where: { 
+        OR: [
+          { senderId: parseInt(tenantId) },
+          { receiverId: parseInt(tenantId) }
+        ]
+      } 
+    });
+    await getPrisma().tenantDocument.deleteMany({ 
+      where: { 
+        OR: [
+          { tenantId: parseInt(tenantId) },
+          { uploadedBy: parseInt(tenantId) }
+        ]
+      } 
+    });
+    await getPrisma().workOrder.deleteMany({ 
+      where: { 
+        OR: [
+          { createdById: parseInt(tenantId) },
+          { assignedToId: parseInt(tenantId) }
+        ]
+      } 
+    });
+    await getPrisma().tenantUnit.deleteMany({ where: { tenantId: parseInt(tenantId) } });
+    await getPrisma().leaseAgreement.deleteMany({ where: { tenantId: parseInt(tenantId) } });
+    await getPrisma().payment.deleteMany({ where: { tenantId: parseInt(tenantId) } });
+    
+    // Finally delete the user
+    await getPrisma().user.delete({ where: { id: parseInt(tenantId) } });
   },
 
   async updateLease(leaseId, updateData, landlordId) {
     // Find lease and check landlord owns the property
-    const lease = await prisma.leaseAgreement.findUnique({
+    const lease = await getPrisma().leaseAgreement.findUnique({
       where: { id: parseInt(leaseId) },
       include: { property: true }
     });
     if (!lease) throw new Error('Lease not found');
     if (lease.property.ownerId !== parseInt(landlordId)) throw new Error('Access denied');
-    return await prisma.leaseAgreement.update({
+    return await getPrisma().leaseAgreement.update({
       where: { id: parseInt(leaseId) },
       data: {
         leaseStartDate: updateData.leaseStartDate,
@@ -1422,13 +1598,13 @@ const db = {
 
   // Lease Document Management
   async getLeaseById(leaseId) {
-    return await prisma.leaseAgreement.findUnique({
+    return await getPrisma().leaseAgreement.findUnique({
       where: { id: parseInt(leaseId) },
     });
   },
 
   async createTenantDocument({ tenantId, type, filename, fileUrl, uploadedBy }) {
-    return await prisma.tenantDocument.create({
+    return await getPrisma().tenantDocument.create({
       data: {
         tenantId: parseInt(tenantId),
         type,
@@ -1441,12 +1617,12 @@ const db = {
 
   async getTenantDocumentsForLease(leaseId) {
     // Find the lease to get tenantId, propertyId, unitId
-    const lease = await prisma.leaseAgreement.findUnique({
+    const lease = await getPrisma().leaseAgreement.findUnique({
       where: { id: parseInt(leaseId) },
     });
     if (!lease) return [];
     // Return all documents for this tenant (optionally filter by type or property/unit)
-    return await prisma.tenantDocument.findMany({
+    return await getPrisma().tenantDocument.findMany({
       where: {
         tenantId: lease.tenantId,
         // Optionally, filter by type: type: 'LEASE_AGREEMENT',
@@ -1454,18 +1630,13 @@ const db = {
       orderBy: { createdAt: 'desc' },
     });
   },
+
+  // Cleanup function
+  async disconnect() {
+    if (prismaClient) {
+      await getPrisma().$disconnect();
+    }
+  },
 };
 
-// Run seed if this file is executed directly
-if (require.main === module) {
-  db.seedDatabase()
-    .catch((e) => {
-      console.error(e);
-      process.exit(1);
-    })
-    .finally(async () => {
-      await prisma.$disconnect();
-    });
-}
-
-module.exports = { db, prisma }; 
+module.exports = { db }; 

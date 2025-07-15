@@ -1,6 +1,4 @@
-# Property Management Platform - Working Prototype
-
-A full-stack property management application with core functionality for landlords, tenants, and contractors.
+# Property Management Platform - Setup Guide
 
 ## 🚀 Quick Start
 
@@ -8,14 +6,20 @@ A full-stack property management application with core functionality for landlor
 - Node.js 18+
 - npm
 
-### Setup & Run
+### One-Click Setup
+```bash
+# Run the start script
+start.bat
+```
+
+### Manual Setup
 ```bash
 # 1. Install dependencies
 npm install
 cd client && npm install && cd ..
 cd server && npm install && cd ..
 
-# 2. Setup environment
+# 2. Setup environment files
 copy server\env.example server\.env
 copy client\env.example client\.env
 
@@ -29,10 +33,11 @@ cd ..
 npm run dev
 ```
 
-### Access the App
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **Database Studio**: `npm run db:studio` (in server directory)
+## 🎯 What You Get
+
+- **Frontend**: http://localhost:3000 (React app)
+- **Backend**: http://localhost:5000 (API server)
+- **Database**: SQLite with sample data
 
 ## 👥 Demo Accounts
 
@@ -44,7 +49,7 @@ npm run dev
 
 ### Property Management
 - Add, edit, delete properties
-- Track property details (address, type, rent)
+- Track property details
 - Property listing and search
 
 ### Tenant Management
@@ -62,12 +67,7 @@ npm run dev
 - Payment history
 - Financial reporting
 
-### User Roles
-- **Landlord**: Full property and tenant management
-- **Tenant**: Self-service portal
-- **Contractor**: Work order management
-
-## 📁 Project Structure
+## 📁 Clean Project Structure
 
 ```
 PropertyMNGMT/
@@ -84,37 +84,36 @@ PropertyMNGMT/
 │   ├── index.js          # Server entry point
 │   └── package.json
 ├── package.json           # Root workspace
+├── start.bat             # One-click start script
 └── README.md
 ```
 
-## 🛠️ Development
+## 🛠️ Development Commands
 
-### Start Development
 ```bash
-npm run dev          # Start both frontend and backend
-npm run dev:client   # Frontend only
-npm run dev:server   # Backend only
-```
+# Start both frontend and backend
+npm run dev
 
-### Database Management
-```bash
-npm run db:migrate   # Run migrations
-npm run db:studio    # Open Prisma Studio
-npm run db:seed      # Seed database
-```
+# Start individual services
+npm run dev:client    # Frontend only
+npm run dev:server    # Backend only
 
-### Build for Production
-```bash
-npm run build        # Build both applications
+# Database management
+npm run db:migrate    # Run migrations
+npm run db:studio     # Open Prisma Studio
+npm run db:seed       # Seed database
+
+# Build for production
+npm run build
 ```
 
 ## 🎯 Next Steps
 
-This prototype provides the foundation for:
-1. **Core functionality** - All basic features work
+This clean prototype provides:
+1. **Working core functionality** - All basic features work
 2. **Clean architecture** - Easy to extend and modify
-3. **Database design** - Proper schema and relationships
-4. **User interface** - Functional UI components
+3. **Proper database design** - Good schema and relationships
+4. **Functional UI** - All components work together
 
 When ready to scale:
 - Add authentication/authorization
@@ -129,4 +128,5 @@ When ready to scale:
 - Includes sample data for testing
 - All core features implemented and working
 - Clean, maintainable codebase
-- Ready for feature additions 
+- No complex infrastructure or CI/CD overhead
+- Focus on functionality over configuration 

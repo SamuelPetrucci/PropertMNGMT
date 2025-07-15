@@ -19,7 +19,11 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'Token is not valid' });
     }
 
-    req.user = user;
+    // Set req.user with both the full user object and the userId from JWT
+    req.user = {
+      ...user,
+      userId: decoded.userId || user.id
+    };
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -37,7 +41,10 @@ const optionalAuth = async (req, res, next) => {
       const user = await db.findUserByUsername(decoded.username);
       
       if (user) {
-        req.user = user;
+        req.user = {
+          ...user,
+          userId: decoded.userId || user.id
+        };
       }
     }
     

@@ -1,12 +1,19 @@
+require('dotenv').config();
+console.log('DATABASE_URL:', process.env.DATABASE_URL);
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const { db } = require('./db');
+const { db } = require('./db/index');
 const multer = require('multer');
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Add this after other route requires
+const invitationsRouter = require('./routes/invitations');
 
 // JWT secret (in production, use environment variable)
 const JWT_SECRET = 'your-secret-key-change-in-production';
@@ -338,7 +345,7 @@ app.patch('/api/work-orders/:id/assign', authenticateToken, async (req, res) => 
   try {
     const workOrder = await db.updateWorkOrder(req.params.id, {
       assignedToId: req.body.assignedToId,
-      status: req.body.assignedToId ? 'ASSIGNED' : 'OPEN',
+      status: req.body.assignedToId ? 'IN_PROGRESS' : 'OPEN',
       notes: req.body.notes
     });
     res.json(workOrder);
@@ -386,92 +393,8 @@ app.get('/api/tenant-payments', authenticateToken, async (req, res) => {
   }
 });
 
-// Comprehensive Tenant Management API
-app.get('/api/tenants', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'LANDLORD') {
-      return res.status(403).json({ error: 'Access denied. Landlords only.' });
-    }
-    
-    const tenants = await db.getAllTenants(req.user.userId);
-    res.json(tenants);
-  } catch (error) {
-    console.error('Error fetching tenants:', error);
-    res.status(500).json({ error: 'Failed to fetch tenants' });
-  }
-});
-
-app.post('/api/tenants', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'LANDLORD') {
-      return res.status(403).json({ error: 'Access denied. Landlords only.' });
-    }
-    
-    const tenant = await db.createTenant({
-      ...req.body,
-      landlordId: req.user.userId
-    });
-    res.status(201).json(tenant);
-  } catch (error) {
-    console.error('Error creating tenant:', error);
-    res.status(500).json({ error: 'Failed to create tenant' });
-  }
-});
-
-app.get('/api/tenants/:id', authenticateToken, async (req, res) => {
-  try {
-    const tenant = await db.getTenantById(req.params.id, req.user.userId, req.user.role);
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-    res.json(tenant);
-  } catch (error) {
-    console.error('Error fetching tenant:', error);
-    res.status(500).json({ error: 'Failed to fetch tenant' });
-  }
-});
-
-app.put('/api/tenants/:id', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'LANDLORD') {
-      return res.status(403).json({ error: 'Access denied. Landlords only.' });
-    }
-    
-    const tenant = await db.updateTenant(req.params.id, req.body, req.user.userId);
-    res.json(tenant);
-  } catch (error) {
-    console.error('Error updating tenant:', error);
-    res.status(500).json({ error: 'Failed to update tenant' });
-  }
-});
-
-app.delete('/api/tenants/:id', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'LANDLORD') {
-      return res.status(403).json({ error: 'Access denied. Landlords only.' });
-    }
-    await db.deleteTenantCascade(req.params.id, req.user.userId);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting tenant:', error);
-    res.status(500).json({ error: 'Failed to delete tenant' });
-  }
-});
-
-// Lease Management
-app.post('/api/tenants/:id/leases', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'LANDLORD') {
-      return res.status(403).json({ error: 'Access denied. Landlords only.' });
-    }
-    
-    const lease = await db.createLease(req.params.id, req.body, req.user.userId);
-    res.status(201).json(lease);
-  } catch (error) {
-    console.error('Error creating lease:', error);
-    res.status(500).json({ error: 'Failed to create lease' });
-  }
-});
+// OLD TENANT ENDPOINTS - REMOVED (now using /routes/tenants.js)
+// These endpoints are replaced by the new simplified tenant routes
 
 // Update lease agreement (start/end dates)
 app.patch('/api/leases/:id', authenticateToken, async (req, res) => {
@@ -542,6 +465,104 @@ app.get('/api/lease-documents/:filename', authenticateToken, async (req, res) =>
   } catch (error) {
     console.error('Error serving lease document:', error);
     res.status(500).json({ error: 'Failed to serve lease document' });
+  }
+});
+
+// Lease upload endpoint for landlords
+app.post('/api/leases/upload', authenticateToken, uploadLeaseDoc.single('file'), async (req, res) => {
+  console.log('Received upload:', req.body, req.file);
+  try {
+    // Only landlords can upload leases
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ message: 'Only landlords can upload leases.' });
+    }
+
+    const { tenantId, propertyId, unitId, rentAmount, securityDeposit, leaseStartDate, leaseEndDate } = req.body;
+    if (!tenantId || !propertyId || !leaseStartDate || !leaseEndDate || !req.file) {
+      return res.status(400).json({ message: 'Missing required fields or file.' });
+    }
+
+    // Determine rent value
+    let rentValue = null;
+    if (rentAmount && rentAmount !== '') {
+      rentValue = parseFloat(rentAmount);
+    } else {
+      // Try to get rent from property/unit
+      const property = await db.getPropertyById(propertyId);
+      if (unitId) {
+        const unit = await db.getUnitById(unitId);
+        rentValue = unit?.rent || null;
+      } else {
+        rentValue = property?.rent || null;
+      }
+    }
+
+    // Create LeaseAgreement
+    const lease = await db.createLease(Number(tenantId), {
+      propertyId,
+      unitId,
+      rentAmount: rentValue,
+      securityDeposit,
+      leaseStartDate,
+      leaseEndDate,
+    }, req.user.userId);
+
+    // Store the uploaded file as a TenantDocument
+    const document = await db.createTenantDocument({
+      tenantId: Number(tenantId),
+      type: 'LEASE_AGREEMENT',
+      filename: req.file.filename,
+      fileUrl: `/uploads/leases/${req.file.filename}`,
+      uploadedBy: req.user.userId,
+    });
+
+    res.status(201).json({ message: 'Lease uploaded and linked successfully.', lease, document });
+  } catch (error) {
+    console.error('Error uploading lease:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Lease upload for invited tenant (before registration)
+app.post('/api/leases/upload-for-invite', authenticateToken, uploadLeaseDoc.single('file'), async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ message: 'Only landlords can upload leases.' });
+    }
+    const { invitationId, propertyId, unitId, rentAmount, securityDeposit, leaseStartDate, leaseEndDate } = req.body;
+    if (!invitationId || !propertyId || !rentAmount || !leaseStartDate || !leaseEndDate || !req.file) {
+      return res.status(400).json({ message: 'Missing required fields or file.' });
+    }
+    // Find invitation
+    const invitation = await db.getInvitationById(invitationId);
+    if (!invitation) {
+      return res.status(404).json({ message: 'Invitation not found.' });
+    }
+    // Create LeaseAgreement linked to invitation
+    const lease = await db.createLease(1, { // Placeholder tenantId, will be updated when tenant registers
+      propertyId,
+      unitId,
+      rentAmount,
+      securityDeposit,
+      leaseStartDate,
+      leaseEndDate,
+    }, req.user.userId);
+    
+    // Update lease with invitation ID
+    await db.updateLease(lease.id, { invitationId: invitation.id }, req.user.userId);
+    
+    // Store the uploaded file as a TenantDocument linked to invitation
+    const document = await db.createTenantDocument({
+      tenantId: 1, // Placeholder, will be updated when tenant registers
+      type: 'LEASE_AGREEMENT',
+      filename: req.file.filename,
+      fileUrl: `/uploads/leases/${req.file.filename}`,
+      uploadedBy: req.user.userId,
+    });
+    res.status(201).json({ message: 'Lease uploaded and linked to invitation successfully.', lease, document });
+  } catch (error) {
+    console.error('Error uploading lease for invite:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -618,6 +639,52 @@ app.patch('/api/properties/:propertyId/tenants/:unitNumber', authenticateToken, 
   }
 });
 
+// Rent tracking payment operations
+app.post('/api/rent-tracking/payments', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ error: 'Access denied. Landlords only.' });
+    }
+    
+    const { tenantId, propertyId, unitId, dueDate, amount, paid, paidDate } = req.body;
+    
+    const payment = await db.createPayment({
+      tenantId: parseInt(tenantId),
+      propertyId: parseInt(propertyId),
+      unitId: unitId ? parseInt(unitId) : null,
+      dueDate,
+      amount: parseFloat(amount),
+      paid: Boolean(paid),
+      paidDate: paidDate || null,
+      createdBy: req.user.userId
+    });
+    
+    res.status(201).json(payment);
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    res.status(500).json({ error: 'Failed to create payment' });
+  }
+});
+
+app.patch('/api/rent-tracking/payments/:paymentId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ error: 'Access denied. Landlords only.' });
+    }
+    
+    const { paid, paidDate } = req.body;
+    const payment = await db.updatePayment(req.params.paymentId, {
+      paid: Boolean(paid),
+      paidDate: paidDate || null
+    }, req.user.userId, req.user.role);
+    
+    res.json(payment);
+  } catch (error) {
+    console.error('Error updating payment:', error);
+    res.status(500).json({ error: 'Failed to update payment' });
+  }
+});
+
 // Contractors
 app.get('/api/contractors', authenticateToken, async (req, res) => {
   try {
@@ -647,6 +714,298 @@ app.delete('/api/tenants/:tenantId/assignment', authenticateToken, async (req, r
   } catch (error) {
     console.error('Error unassigning tenant:', error);
     res.status(500).json({ error: 'Failed to unassign tenant' });
+  }
+});
+
+// OLD ADD-WITH-LEASE ENDPOINT - REMOVED (now using /routes/tenants.js)
+// This endpoint is replaced by the new simplified tenant creation route
+
+// Add this with other app.use or route registrations
+app.use('/api/invitations', invitationsRouter);
+
+// Simplified tenant routes
+const tenantsRouter = require('./routes/tenants');
+app.use('/api/tenants', tenantsRouter);
+
+// Rent Tracking endpoint (flat array for rent tracking tab)
+app.get('/api/rent-tracking', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ error: 'Access denied. Landlords only.' });
+    }
+    const rows = await db.getTenantAssignmentsFlat(req.user.userId);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching rent tracking data:', error);
+    res.status(500).json({ error: 'Failed to fetch rent tracking data' });
+  }
+});
+
+// Simple maintenance requests
+app.get('/api/maintenance-requests', authenticateToken, async (req, res) => {
+  try {
+    // For now, return mock data until we implement the database functions
+    const mockRequests = [
+      {
+        id: 1,
+        title: 'Leaky faucet in kitchen',
+        description: 'The kitchen faucet is dripping constantly',
+        category: 'PLUMBING',
+        priority: 'MEDIUM',
+        status: 'OPEN',
+        propertyId: 1,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 2,
+        title: 'Broken window lock',
+        description: 'The lock on the bedroom window is not working',
+        category: 'GENERAL',
+        priority: 'LOW',
+        status: 'IN_PROGRESS',
+        propertyId: 2,
+        createdAt: new Date(Date.now() - 86400000).toISOString()
+      },
+      {
+        id: 3,
+        title: 'HVAC not cooling',
+        description: 'Air conditioning is not working properly',
+        category: 'HVAC',
+        priority: 'HIGH',
+        status: 'COMPLETED',
+        propertyId: 1,
+        createdAt: new Date(Date.now() - 172800000).toISOString()
+      }
+    ];
+    res.json(mockRequests);
+  } catch (error) {
+    console.error('Error fetching maintenance requests:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance requests' });
+  }
+});
+
+app.post('/api/maintenance-requests', authenticateToken, async (req, res) => {
+  try {
+    const newRequest = {
+      id: Date.now(),
+      ...req.body,
+      status: 'OPEN',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Validate that propertyId is provided
+    if (!newRequest.propertyId) {
+      return res.status(400).json({ error: 'Property ID is required' });
+    }
+    res.status(201).json(newRequest);
+  } catch (error) {
+    console.error('Error creating maintenance request:', error);
+    res.status(500).json({ error: 'Failed to create maintenance request' });
+  }
+});
+
+app.patch('/api/maintenance-requests/:id', authenticateToken, async (req, res) => {
+  try {
+    // For now, just return the updated request
+    const updatedRequest = {
+      id: parseInt(req.params.id),
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+    res.json(updatedRequest);
+  } catch (error) {
+    console.error('Error updating maintenance request:', error);
+    res.status(500).json({ error: 'Failed to update maintenance request' });
+  }
+});
+
+// Enhanced work orders with contractor integration
+app.get('/api/work-orders', authenticateToken, async (req, res) => {
+  try {
+    const workOrders = await db.getWorkOrders(req.user.userId, req.user.role);
+    res.json(workOrders);
+  } catch (error) {
+    console.error('Error fetching work orders:', error);
+    res.status(500).json({ error: 'Failed to fetch work orders' });
+  }
+});
+
+app.post('/api/work-orders', authenticateToken, async (req, res) => {
+  try {
+    const workOrder = await db.createWorkOrder({
+      ...req.body,
+      createdById: req.user.userId
+    });
+    res.status(201).json(workOrder);
+  } catch (error) {
+    console.error('Error creating work order:', error);
+    res.status(500).json({ error: 'Failed to create work order' });
+  }
+});
+
+app.patch('/api/work-orders/:id', authenticateToken, async (req, res) => {
+  try {
+    const workOrder = await db.updateWorkOrder(req.params.id, req.body, req.user.userId, req.user.role);
+    res.json(workOrder);
+  } catch (error) {
+    console.error('Error updating work order:', error);
+    res.status(500).json({ error: 'Failed to update work order' });
+  }
+});
+
+app.patch('/api/work-orders/:id/assign', authenticateToken, async (req, res) => {
+  try {
+    const workOrder = await db.assignWorkOrder(req.params.id, req.body, req.user.userId);
+    res.json(workOrder);
+  } catch (error) {
+    console.error('Error assigning work order:', error);
+    res.status(500).json({ error: 'Failed to assign work order' });
+  }
+});
+
+// Maintenance communication system
+app.post('/api/maintenance-communications', authenticateToken, async (req, res) => {
+  try {
+    const communication = await db.createMaintenanceCommunication({
+      ...req.body,
+      senderId: req.user.userId
+    });
+    res.status(201).json(communication);
+  } catch (error) {
+    console.error('Error creating maintenance communication:', error);
+    res.status(500).json({ error: 'Failed to create communication' });
+  }
+});
+
+app.get('/api/maintenance-communications/:requestId', authenticateToken, async (req, res) => {
+  try {
+    const communications = await db.getMaintenanceCommunications(req.params.requestId, req.user.userId, req.user.role);
+    res.json(communications);
+  } catch (error) {
+    console.error('Error fetching maintenance communications:', error);
+    res.status(500).json({ error: 'Failed to fetch communications' });
+  }
+});
+
+// Maintenance analytics and reporting
+app.get('/api/maintenance-analytics', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ error: 'Access denied. Landlords only.' });
+    }
+    
+    const analytics = await db.getMaintenanceAnalytics(req.user.userId);
+    res.json(analytics);
+  } catch (error) {
+    console.error('Error fetching maintenance analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance analytics' });
+  }
+});
+
+// Integrated Dashboard endpoint - provides comprehensive data for all features
+app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'LANDLORD') {
+      return res.status(403).json({ error: 'Access denied. Landlords only.' });
+    }
+    
+    // Fetch all data in parallel
+    const [properties, tenants, rentTracking] = await Promise.all([
+      db.getProperties(),
+      db.getAllTenants(req.user.userId),
+      db.getTenantAssignmentsFlat(req.user.userId)
+    ]);
+
+    // Calculate comprehensive statistics
+    const totalProperties = properties.length;
+    const totalTenants = tenants.length;
+    const activeTenants = tenants.filter(t => t.status === 'ACTIVE').length;
+    
+    // Financial calculations
+    const totalMonthlyRent = rentTracking.reduce((sum, rent) => sum + (rent.rent || 0), 0);
+    const totalCollected = rentTracking.reduce((sum, rent) => sum + (rent.totalRentCollected || 0), 0);
+    const totalOutstanding = rentTracking.reduce((sum, rent) => sum + (rent.outstandingBalance || 0), 0);
+    
+    // Occupancy calculations
+    const totalUnits = properties.reduce((sum, prop) => sum + (prop.units?.length || 1), 0);
+    const occupiedUnits = rentTracking.length;
+    const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits * 100).toFixed(1) : 0;
+    
+    // Overdue calculations
+    const overdueTenants = rentTracking.filter(rent => rent.overduePayments > 0).length;
+    const overdueAmount = rentTracking.reduce((sum, rent) => {
+      const overduePayments = rent.payments?.filter(p => !p.paid && new Date(p.dueDate) < new Date()) || [];
+      return sum + overduePayments.reduce((pSum, p) => pSum + (p.amount || 0), 0);
+    }, 0);
+
+    // Property type breakdown
+    const singleFamilyProperties = properties.filter(p => p.type === 'single-family').length;
+    const multiFamilyProperties = properties.filter(p => p.type === 'multi-family').length;
+
+    // Recent activity
+    const recentPayments = rentTracking
+      .flatMap(rent => rent.payments || [])
+      .filter(payment => payment.paid && payment.paidDate)
+      .sort((a, b) => new Date(b.paidDate) - new Date(a.paidDate))
+      .slice(0, 5);
+
+    const expiringLeases = rentTracking.filter(rent => {
+      if (!rent.leaseEnd) return false;
+      const endDate = new Date(rent.leaseEnd);
+      const now = new Date();
+      const daysUntilExpiry = (endDate - now) / (1000 * 60 * 60 * 24);
+      return daysUntilExpiry <= 30 && daysUntilExpiry > 0;
+    });
+
+    const integratedData = {
+      summary: {
+        totalProperties,
+        totalTenants,
+        activeTenants,
+        totalMonthlyRent,
+        totalCollected,
+        totalOutstanding,
+        totalUnits,
+        occupiedUnits,
+        occupancyRate: parseFloat(occupancyRate),
+        overdueTenants,
+        overdueAmount,
+        singleFamilyProperties,
+        multiFamilyProperties
+      },
+      properties: properties.map(property => {
+        const propertyRentData = rentTracking.filter(rent => rent.propertyId === property.id);
+        const propertyTenants = tenants.filter(tenant => 
+          tenant.tenantUnits?.some(tu => tu.propertyId === property.id)
+        );
+        
+        return {
+          ...property,
+          tenantCount: propertyTenants.length,
+          totalRent: propertyRentData.reduce((sum, rent) => sum + (rent.rent || 0), 0),
+          totalCollected: propertyRentData.reduce((sum, rent) => sum + (rent.totalRentCollected || 0), 0),
+          totalOutstanding: propertyRentData.reduce((sum, rent) => sum + (rent.outstandingBalance || 0), 0),
+          overdueTenants: propertyRentData.filter(rent => rent.overduePayments > 0).length
+        };
+      }),
+      tenants: tenants.map(tenant => {
+        const tenantRentData = rentTracking.find(rent => rent.tenantId === tenant.id);
+        return {
+          ...tenant,
+          rentData: tenantRentData || null
+        };
+      }),
+      rentTracking,
+      recentActivity: {
+        recentPayments,
+        expiringLeases
+      }
+    };
+
+    res.json(integratedData);
+  } catch (error) {
+    console.error('Error fetching integrated dashboard data:', error);
+    res.status(500).json({ error: 'Failed to fetch integrated dashboard data' });
   }
 });
 
