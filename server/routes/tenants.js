@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { db } = require('../db');
+const { db } = require('../db/index');
 const { auth } = require('../middleware/auth');
+const { updateLeaseDates } = require('../db/users');
+
+console.log('updateLeaseDates direct import:', typeof updateLeaseDates);
 
 // Apply authentication middleware to all routes
 router.use(auth);
@@ -277,6 +280,38 @@ router.post('/:tenantId/message', async (req, res) => {
   } catch (error) {
     console.error('Error sending message:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Update lease dates and regenerate payments
+router.patch('/:tenantId/lease-dates', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { propertyId, unitId, leaseStartDate, leaseEndDate, rentAmount } = req.body;
+
+    // Validate required fields
+    if (!propertyId || !leaseStartDate || !leaseEndDate) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: propertyId, leaseStartDate, leaseEndDate' 
+      });
+    }
+
+    // Debug: Check if the function exists
+    console.log('Available db functions:', Object.keys(db));
+    console.log('updateLeaseDates function:', typeof db.updateLeaseDates);
+    console.log('Direct updateLeaseDates function:', typeof updateLeaseDates);
+
+    const result = await updateLeaseDates(
+      parseInt(tenantId), 
+      parseInt(propertyId), 
+      unitId ? parseInt(unitId) : null,
+      { leaseStartDate, leaseEndDate, rentAmount }
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating lease dates:', error);
+    res.status(500).json({ error: 'Failed to update lease dates' });
   }
 });
 

@@ -3,8 +3,11 @@ const users = require('./users');
 
 const properties = {
   // Property operations
-  async getProperties() {
+  async getProperties(userId = null) {
+    const whereClause = userId ? { ownerId: userId } : {};
+    
     const properties = await getPrisma().property.findMany({
+      where: whereClause,
       include: {
         units: {
           include: {
@@ -22,6 +25,14 @@ const properties = {
             unit: true,
           },
         },
+        leaseAgreements: {
+          where: {
+            status: 'ACTIVE'
+          },
+          include: {
+            tenant: true
+          }
+        }
       },
     });
 
@@ -40,10 +51,19 @@ const properties = {
         amount: expense.amount,
       }));
 
+      // Check if property has active lease (for single-family)
+      const hasActiveLease = property.type === 'SINGLE_FAMILY' && 
+        property.leaseAgreements.some(lease => {
+          const endDate = new Date(lease.leaseEndDate);
+          return endDate > new Date(); // Lease is still active
+        });
+
       let rent = null;
       let tenant = null;
       let leaseStart = null;
       let leaseEnd = null;
+      let isAvailable = !hasActiveLease;
+      
       if (property.type === 'SINGLE_FAMILY') {
         rent = property.rent; // Always use the property rent field
         const tenantUnit = property.tenantUnits[0];
@@ -57,6 +77,15 @@ const properties = {
       const units = property.type === 'MULTI_FAMILY' ? property.units.map(unit => {
         // Find tenant unit for this unit
         const tenantUnit = property.tenantUnits.find(tu => tu.unitId === unit.id);
+        
+        // Check if unit has active lease
+        const unitActiveLease = property.leaseAgreements.find(lease => 
+          lease.unitId === unit.id && 
+          new Date(lease.leaseEndDate) > new Date()
+        );
+        
+        const isUnitAvailable = !unitActiveLease;
+        
         return {
           id: unit.id,
           unitNumber: unit.unitNumber,
@@ -64,6 +93,9 @@ const properties = {
           tenant: tenantUnit?.tenantName || null,
           leaseStart: tenantUnit?.leaseStart || null,
           leaseEnd: tenantUnit?.leaseEnd || null,
+          isAvailable: isUnitAvailable,
+          activeTenant: unitActiveLease?.tenant?.firstName + ' ' + unitActiveLease?.tenant?.lastName || null,
+          leaseEndDate: unitActiveLease?.leaseEndDate || null,
         };
       }) : [];
 
@@ -82,6 +114,9 @@ const properties = {
         taxRate: property.taxRate,
         miscExpenses: miscExpenses,
         tenantUnits: property.tenantUnits,
+        isAvailable: isAvailable,
+        activeTenant: hasActiveLease ? property.leaseAgreements[0]?.tenant?.firstName + ' ' + property.leaseAgreements[0]?.tenant?.lastName : null,
+        leaseEndDate: hasActiveLease ? property.leaseAgreements[0]?.leaseEndDate : null,
       };
     });
   },

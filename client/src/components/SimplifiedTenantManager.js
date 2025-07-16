@@ -600,11 +600,45 @@ export default function SimplifiedTenantManager() {
                             });
                           }}
                         >
-                          {properties.map((property) => (
-                            <MenuItem key={property.id} value={property.id}>
-                              {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
-                            </MenuItem>
-                          ))}
+                          {/* Available properties first */}
+                          {properties
+                            .filter(property => property.isAvailable !== false)
+                            .map((property) => (
+                              <MenuItem key={property.id} value={property.id}>
+                                {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
+                              </MenuItem>
+                            ))}
+                          
+                          {/* Divider */}
+                          {properties.some(p => p.isAvailable === false) && (
+                            <Divider sx={{ my: 1 }} />
+                          )}
+                          
+                          {/* Unavailable properties at the bottom */}
+                          {properties
+                            .filter(property => property.isAvailable === false)
+                            .map((property) => (
+                              <MenuItem 
+                                key={property.id} 
+                                value={property.id}
+                                disabled
+                                sx={{ opacity: 0.6 }}
+                              >
+                                <Box>
+                                  <Typography variant="body2" sx={{ textDecoration: 'line-through' }}>
+                                    {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
+                                  </Typography>
+                                  <Typography variant="body2" color="error.main" sx={{ fontSize: '0.75rem' }}>
+                                    Occupied by {property.activeTenant || 'Unknown Tenant'}
+                                  </Typography>
+                                  {property.leaseEndDate && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                      Lease ends: {new Date(property.leaseEndDate).toLocaleDateString()}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </MenuItem>
+                            ))}
                         </Select>
                       </FormControl>
                       
@@ -623,11 +657,47 @@ export default function SimplifiedTenantManager() {
                               });
                             }}
                           >
+                            {/* Available units first */}
                             {properties
                               .find(p => p.id === tenantForm.propertyId)
-                              ?.units?.map((unit) => (
+                              ?.units?.filter(unit => unit.isAvailable !== false)
+                              .map((unit) => (
                                 <MenuItem key={unit.id} value={unit.id}>
                                   Unit {unit.unitNumber} - ${unit.rent}/month
+                                </MenuItem>
+                              ))}
+                            
+                            {/* Divider */}
+                            {properties
+                              .find(p => p.id === tenantForm.propertyId)
+                              ?.units?.some(unit => unit.isAvailable === false) && (
+                                <Divider sx={{ my: 1 }} />
+                              )}
+                            
+                            {/* Unavailable units at the bottom */}
+                            {properties
+                              .find(p => p.id === tenantForm.propertyId)
+                              ?.units?.filter(unit => unit.isAvailable === false)
+                              .map((unit) => (
+                                <MenuItem 
+                                  key={unit.id} 
+                                  value={unit.id}
+                                  disabled
+                                  sx={{ opacity: 0.6 }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2" sx={{ textDecoration: 'line-through' }}>
+                                      Unit {unit.unitNumber} - ${unit.rent}/month
+                                    </Typography>
+                                    <Typography variant="body2" color="error.main" sx={{ fontSize: '0.75rem' }}>
+                                      Occupied by {unit.activeTenant || 'Unknown Tenant'}
+                                    </Typography>
+                                    {unit.leaseEndDate && (
+                                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                        Lease ends: {new Date(unit.leaseEndDate).toLocaleDateString()}
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 </MenuItem>
                               ))}
                           </Select>

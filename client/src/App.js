@@ -30,6 +30,7 @@ import Login from './components/Auth/Login';
 import ProjectJobsDashboard from './components/ProjectJobsDashboard';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import { Menu, MenuItem as MuiMenuItem } from '@mui/material';
+import { RefreshProvider } from './components/RefreshContext';
 
 const drawerWidth = 220;
 
@@ -163,9 +164,10 @@ function RoleBasedContent({ user, onSignOut }) {
         }}
       >
         <Toolbar>
-          <Typography variant="h6" noWrap component="div" sx={{ color: 'white' }}>
-            Property Management System
-          </Typography>
+          <div className="main-header-title">
+            <span className="main-header-main">NIF</span>
+            <span className="main-header-sub">Properties</span>
+          </div>
           <Box sx={{ flexGrow: 1 }} />
           <Button color="inherit" onClick={onSignOut} sx={{ color: 'white' }}>Sign Out</Button>
         </Toolbar>
@@ -240,7 +242,7 @@ function RoleBasedContent({ user, onSignOut }) {
         <Routes>
           <Route path="/" element={<DashboardHome properties={properties} loading={loading} error={error} />} />
           <Route path="/financial-dashboard" element={<FinancialDashboard />} />
-          <Route path="/properties" element={<PropertyList properties={properties} loading={loading} error={error} />} />
+          <Route path="/properties" element={<PropertyList refreshProperties={fetchProperties} />} />
           <Route path="/properties/:id" element={<PropertyDetails properties={properties} />} />
           <Route path="/project-management" element={<ProjectManagement />} />
           <Route path="/project-management/dashboard" element={<ProjectJobsDashboard />} />
@@ -294,15 +296,19 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <Router>
-        <Login onLogin={handleLogin} />
-      </Router>
+      <RefreshProvider>
+        <Router>
+          <Login onLogin={handleLogin} />
+        </Router>
+      </RefreshProvider>
     );
   }
 
   return (
-    <Router>
-      <RoleBasedContent user={user} onSignOut={handleSignOut} />
-    </Router>
+    <RefreshProvider>
+      <Router>
+        <RoleBasedContent user={user} onSignOut={handleSignOut} />
+      </Router>
+    </RefreshProvider>
   );
 } 

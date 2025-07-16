@@ -30,14 +30,15 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useNavigate } from 'react-router-dom';
 import AddPropertyForm from './AddPropertyForm';
+import { useRefresh } from '../RefreshContext';
 
 function PropertyList({ refreshProperties }) {
+  const { refreshTrigger, triggerRefresh } = useRefresh();
   const [properties, setProperties] = React.useState([]);
   const [tenants, setTenants] = React.useState([]);
   const [rentData, setRentData] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
-  const [refresh, setRefresh] = React.useState(0);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
@@ -47,7 +48,7 @@ function PropertyList({ refreshProperties }) {
 
   React.useEffect(() => {
     fetchIntegratedData();
-  }, [refresh, navigate]);
+  }, [refreshTrigger]);
 
   const fetchIntegratedData = async () => {
     setLoading(true);
@@ -56,35 +57,23 @@ function PropertyList({ refreshProperties }) {
       const token = localStorage.getItem('token');
       const apiBaseUrl = getApiBaseUrl();
       
-      // Fetch all data in parallel
-      const [propertiesRes, tenantsRes, rentTrackingRes] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/properties`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`${apiBaseUrl}/api/tenants`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`${apiBaseUrl}/api/rent-tracking`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-      ]);
+      // Use the integrated dashboard endpoint for consistent data structure
+      const response = await fetch(`${apiBaseUrl}/api/dashboard/integrated`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-      if (propertiesRes.ok && tenantsRes.ok && rentTrackingRes.ok) {
-        const [propertiesData, tenantsData, rentData] = await Promise.all([
-          propertiesRes.json(),
-          tenantsRes.json(),
-          rentTrackingRes.json()
-        ]);
-
-        console.log('Integrated data fetched:', { 
-          properties: propertiesData.length, 
-          tenants: tenantsData.length, 
-          rentData: rentData.length 
+      if (response.ok) {
+        const dashboardData = await response.json();
+        
+        console.log('Integrated dashboard data fetched:', { 
+          properties: dashboardData.properties.length, 
+          tenants: dashboardData.tenants.length, 
+          rentTracking: dashboardData.rentTracking.length 
         });
 
-        setProperties(propertiesData);
-        setTenants(tenantsData);
-        setRentData(rentData);
+        setProperties(dashboardData.properties);
+        setTenants(dashboardData.tenants);
+        setRentData(dashboardData.rentTracking);
       } else {
         throw new Error('Failed to fetch integrated data');
       }
@@ -107,45 +96,29 @@ function PropertyList({ refreshProperties }) {
 
   // Get integrated property data with tenant and rent information
   const getIntegratedPropertyData = (property) => {
-    const propertyTenants = tenants.filter(tenant => 
-      tenant.tenantUnits?.some(tu => tu.propertyId === property.id)
-    );
-    
-    const propertyRentData = rentData.filter(rent => 
-      rent.propertyId === property.id
-    );
-
-    const totalRent = propertyRentData.reduce((sum, rent) => sum + (rent.rent || 0), 0);
-    const totalCollected = propertyRentData.reduce((sum, rent) => sum + (rent.totalRentCollected || 0), 0);
-    const totalOutstanding = propertyRentData.reduce((sum, rent) => sum + (rent.outstandingBalance || 0), 0);
-    
-    const activeTenants = propertyTenants.filter(tenant => 
-      tenant.status === 'ACTIVE' || tenant.assignments?.length > 0
-    ).length;
-
-    const overdueTenants = propertyRentData.filter(rent => 
-      rent.overduePayments > 0
-    ).length;
-
+    // The properties from the integrated dashboard already have financial data calculated
+    // Just ensure we have the correct structure
     return {
       ...property,
-      tenantCount: activeTenants,
-      totalRent,
-      totalCollected,
-      totalOutstanding,
-      overdueTenants,
+      tenantCount: property.tenantCount || 0,
+      totalRent: property.totalRent || 0,
+      totalCollected: property.totalCollected || 0,
+      totalOutstanding: property.totalOutstanding || 0,
+      overdueTenants: property.overdueTenants || 0,
       occupancyRate: property.units?.length > 0 
-        ? (activeTenants / property.units.length * 100).toFixed(1)
-        : activeTenants > 0 ? '100' : '0'
+        ? ((property.tenantCount || 0) / property.units.length * 100).toFixed(1)
+        : (property.tenantCount || 0) > 0 ? '100' : '0'
     };
   };
 
   const handleOpenDialog = () => setDialogOpen(true);
   const handleCloseDialog = () => setDialogOpen(false);
   const handlePropertyAdded = () => {
-    setRefresh((r) => r + 1);
+    console.log('Property added, triggering refresh...');
     setDialogOpen(false);
-    // Refresh the dashboard properties
+    // Trigger refresh to update the property list
+    triggerRefresh();
+    // Also refresh the dashboard properties if callback provided
     if (refreshProperties) {
       refreshProperties();
     }
@@ -180,9 +153,10 @@ function PropertyList({ refreshProperties }) {
   };
   const handlePropertyEdited = () => {
     console.log('Property edited, refreshing...');
-    setRefresh((r) => r + 1);
     handleEditDialogClose();
-    // Refresh the dashboard properties
+    // Trigger refresh to update the property list
+    triggerRefresh();
+    // Also refresh the dashboard properties if callback provided
     if (refreshProperties) {
       refreshProperties();
     }
@@ -201,9 +175,10 @@ function PropertyList({ refreshProperties }) {
       });
       
       if (response.ok) {
-        setRefresh((r) => r + 1);
         handleDeleteDialogClose();
-        // Refresh the dashboard properties
+        // Trigger refresh to update the property list
+        triggerRefresh();
+        // Also refresh the dashboard properties if callback provided
         if (refreshProperties) {
           refreshProperties();
         }
@@ -218,11 +193,13 @@ function PropertyList({ refreshProperties }) {
 
   const getPropertyStatus = (property) => {
     const integratedData = getIntegratedPropertyData(property);
-    
+    const occupancy = Number(integratedData.occupancyRate);
+
     if (integratedData.overdueTenants > 0) return 'overdue';
-    if (integratedData.occupancyRate === '0') return 'vacant';
-    if (integratedData.occupancyRate === '100') return 'full';
-    return 'partial';
+    if (occupancy === 0) return 'vacant';
+    if (occupancy >= 99.5) return 'full'; // treat 99.5%+ as full
+    if (occupancy > 0 && occupancy < 99.5) return 'partial';
+    return 'unknown';
   };
 
   const getStatusColor = (status) => {

@@ -1,5 +1,32 @@
 const { getPrisma } = require('./connection');
 
+// Helper function to calculate tenant status based on lease dates
+function calculateTenantStatus(tenantUnits) {
+  const now = new Date();
+  
+  for (const tenantUnit of tenantUnits) {
+    if (tenantUnit.leaseStart && tenantUnit.leaseEnd) {
+      const startDate = new Date(tenantUnit.leaseStart);
+      const endDate = new Date(tenantUnit.leaseEnd);
+      
+      if (now >= startDate && now <= endDate) {
+        return 'ACTIVE';
+      } else if (now < startDate) {
+        return 'PENDING';
+      } else if (now > endDate) {
+        return 'EXPIRED';
+      }
+    }
+  }
+  
+  return 'INACTIVE';
+}
+
+// Helper function to check if a tenant has an active lease
+function hasActiveLease(tenantUnits) {
+  return calculateTenantStatus(tenantUnits) === 'ACTIVE';
+}
+
 const users = {
   // User operations
   async createUser(userData) {
@@ -156,9 +183,11 @@ const users = {
             role: tenantUnit.tenant.role,
             assignments: [],
             payments: [],
+            tenantUnits: [], // Store all tenant units for status calculation
           });
         }
-        tenantMap.get(id).assignments.push({
+        const tenant = tenantMap.get(id);
+        tenant.assignments.push({
           propertyId: property.id,
           propertyName: property.name,
           propertyAddress: property.address,
@@ -169,16 +198,24 @@ const users = {
           leaseEnd: tenantUnit.leaseEnd || '',
           type: property.type === 'SINGLE_FAMILY' ? 'single-family' : 'multi-family',
         });
+        tenant.tenantUnits.push(tenantUnit);
       }
     }
 
-    // Add payment information for each tenant
+    // Add payment information and calculate status for each tenant
     for (const tenant of tenantMap.values()) {
       const payments = await getPrisma().payment.findMany({
         where: { tenantId: tenant.id },
         orderBy: { dueDate: 'desc' }
       });
       tenant.payments = payments || [];
+      
+      // Calculate status based on lease dates
+      tenant.status = calculateTenantStatus(tenant.tenantUnits);
+      tenant.hasActiveLease = hasActiveLease(tenant.tenantUnits);
+      
+      // Remove tenantUnits from response (it was just for calculation)
+      delete tenant.tenantUnits;
     }
 
     return Array.from(tenantMap.values());
@@ -261,6 +298,8 @@ const users = {
           unitId: userData.unitId ? parseInt(userData.unitId) : null,
           rent: userData.rentAmount ? Number(userData.rentAmount) : null,
           tenantName: `${userData.firstName} ${userData.lastName}`,
+          leaseStart: userData.leaseStartDate || null,
+          leaseEnd: userData.leaseEndDate || null,
         }
       });
       // Create a lease agreement for this tenant
@@ -523,6 +562,69 @@ const users = {
       }
     });
   },
+
+  // Update lease dates and regenerate payments
+  async updateLeaseDates(tenantId, propertyId, unitId, leaseData) {
+    const { leaseStartDate, leaseEndDate, rentAmount } = leaseData;
+    await getPrisma().tenantUnit.updateMany({
+      where: {
+        tenantId: parseInt(tenantId),
+        propertyId: parseInt(propertyId),
+        unitId: unitId ? parseInt(unitId) : null
+      },
+      data: {
+        leaseStart: leaseStartDate,
+        leaseEnd: leaseEndDate,
+        rent: rentAmount ? Number(rentAmount) : undefined
+      }
+    });
+    await getPrisma().leaseAgreement.updateMany({
+      where: {
+        tenantId: parseInt(tenantId),
+        propertyId: parseInt(propertyId),
+        unitId: unitId ? parseInt(unitId) : null
+      },
+      data: {
+        leaseStartDate,
+        leaseEndDate,
+        rentAmount: rentAmount ? Number(rentAmount) : undefined
+      }
+    });
+    await getPrisma().payment.deleteMany({
+      where: {
+        tenantId: parseInt(tenantId),
+        propertyId: parseInt(propertyId),
+        unitId: unitId ? parseInt(unitId) : null
+      }
+    });
+    if (leaseStartDate && leaseEndDate && rentAmount) {
+      const startDate = new Date(leaseStartDate);
+      const endDate = new Date(leaseEndDate);
+      const monthlyRent = Number(rentAmount);
+      const payments = [];
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        payments.push({
+          tenantId: parseInt(tenantId),
+          propertyId: parseInt(propertyId),
+          unitId: unitId ? parseInt(unitId) : null,
+          amount: monthlyRent,
+          dueDate: currentDate.toISOString().split('T')[0],
+          paidDate: null,
+          status: 'PENDING',
+          method: null
+        });
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+      if (payments.length > 0) {
+        await getPrisma().payment.createMany({
+          data: payments
+        });
+      }
+    }
+    return { success: true, message: 'Lease dates updated and payments regenerated' };
+  }
 };
 
 module.exports = users; 
+module.exports.updateLeaseDates = users.updateLeaseDates; 

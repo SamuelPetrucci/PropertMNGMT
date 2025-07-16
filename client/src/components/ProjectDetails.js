@@ -163,7 +163,10 @@ const ProjectDetails = () => {
         body: JSON.stringify(newJob)
       });
       
-      if (!response.ok) throw new Error('Failed to create job');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create job');
+      }
       
       // Refresh project details
       await fetchProjectDetails();
@@ -173,7 +176,7 @@ const ProjectDetails = () => {
       setCreateJobDialog(false);
     } catch (error) {
       console.error('Error creating job:', error);
-      setError('Failed to create job');
+      setError(error.message || 'Failed to create job');
     }
   };
 
@@ -194,7 +197,10 @@ const ProjectDetails = () => {
         body: JSON.stringify(costData)
       });
       
-      if (!response.ok) throw new Error('Failed to create cost');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create cost');
+      }
       
       // Refresh project details
       await fetchProjectDetails();
@@ -204,7 +210,7 @@ const ProjectDetails = () => {
       setCreateCostDialog(false);
     } catch (error) {
       console.error('Error creating cost:', error);
-      setError('Failed to create cost');
+      setError(error.message || 'Failed to create cost');
     }
   };
 
@@ -403,10 +409,10 @@ const ProjectDetails = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" color="text.secondary" gutterBottom>
-                Total Cost
+                Total Spent
               </Typography>
               <Typography variant="h4" component="div">
-                {formatCurrency(project.totalCost)}
+                {formatCurrency(project.totalSpent || 0)}
               </Typography>
             </CardContent>
           </Card>
@@ -461,26 +467,24 @@ const ProjectDetails = () => {
             </Typography>
             <Box display="flex" justifyContent="space-between" mb={1}>
               <Typography variant="body2">
-                {formatCurrency(project.totalCost)} of {formatCurrency(project.budget)}
+                {formatCurrency(project.totalSpent || 0)} of {formatCurrency(project.budget)}
               </Typography>
               <Typography variant="body2">
-                {project.budgetUtilization?.toFixed(1)}% used
+                {((project.totalSpent || 0) / project.budget * 100).toFixed(1)}% used
               </Typography>
             </Box>
             <LinearProgress 
               variant="determinate" 
-              value={Math.min(project.budgetUtilization || 0, 100)}
-              color={project.totalCost > project.budget ? 'error' : 'primary'}
+              value={Math.min(((project.totalSpent || 0) / project.budget) * 100, 100)}
+              color={(project.totalSpent || 0) > project.budget ? 'error' : 'primary'}
               sx={{ height: 8, borderRadius: 4 }}
             />
-            {project.budgetRemaining && (
-              <Typography variant="caption" color="text.secondary" mt={1} display="block">
-                {project.totalCost > project.budget 
-                  ? `${formatCurrency(Math.abs(project.budgetRemaining))} over budget`
-                  : `${formatCurrency(project.budgetRemaining)} remaining`
-                }
-              </Typography>
-            )}
+            <Typography variant="caption" color="text.secondary" mt={1} display="block">
+              {(project.totalSpent || 0) > project.budget 
+                ? `${formatCurrency(Math.abs(project.remainingBudget || 0))} over budget`
+                : `${formatCurrency(project.remainingBudget || 0)} remaining`
+              }
+            </Typography>
           </CardContent>
         </Card>
       )}

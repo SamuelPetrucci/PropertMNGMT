@@ -67,6 +67,7 @@ import {
   AttachMoney as MoneyIcon,
   Security as SecurityIcon,
   CloudUpload as UploadIcon,
+  CloudUpload as CloudUploadIcon,
   PersonAdd as PersonAddIcon,
   Send as SendIcon,
   ExpandMore as ExpandMoreIcon,
@@ -110,6 +111,19 @@ export default function ModernTenantDashboard() {
   const [selectedAction, setSelectedAction] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [removingTenant, setRemovingTenant] = useState(false);
+  
+  // Edit tenant form state
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    leaseStartDate: '',
+    leaseEndDate: '',
+    rentAmount: '',
+    propertyId: '',
+    unitId: ''
+  });
 
   // Notifications
   const [notifications, setNotifications] = useState([]);
@@ -250,6 +264,28 @@ export default function ModernTenantDashboard() {
   const handleQuickAction = (action, tenant) => {
     setSelectedAction(action);
     setSelectedTenant(tenant);
+    
+    if (action === 'edit') {
+      // Populate edit form with tenant data
+      const assignment = tenant.assignments?.[0]; // Get first assignment
+      setEditForm({
+        firstName: tenant.firstName || '',
+        lastName: tenant.lastName || '',
+        email: tenant.email || '',
+        phone: tenant.phone || '',
+        leaseStartDate: assignment?.leaseStart || '',
+        leaseEndDate: assignment?.leaseEnd || '',
+        rentAmount: assignment?.rent?.toString() || '',
+        propertyId: assignment?.propertyId?.toString() || '',
+        unitId: assignment?.unitId?.toString() || ''
+      });
+    }
+    
+    // Reset tab to Overview when viewing tenant details
+    if (action === 'view') {
+      setSelectedTab(0);
+    }
+    
     setQuickActionDialog(true);
   };
 
@@ -284,6 +320,65 @@ export default function ModernTenantDashboard() {
       setError('Failed to remove tenant');
     } finally {
       setRemovingTenant(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedTenant) return;
+    
+    try {
+      setError(null);
+      const token = localStorage.getItem('token');
+      const apiBaseUrl = getApiBaseUrl();
+      
+      // First update basic tenant information
+      const updateResponse = await fetch(`${apiBaseUrl}/api/tenants/${selectedTenant.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          firstName: editForm.firstName,
+          lastName: editForm.lastName,
+          email: editForm.email,
+          phone: editForm.phone
+        })
+      });
+      
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update tenant information');
+      }
+      
+      // Then update lease dates if they changed
+      if (editForm.leaseStartDate && editForm.leaseEndDate && editForm.propertyId) {
+        const leaseResponse = await fetch(`${apiBaseUrl}/api/tenants/${selectedTenant.id}/lease-dates`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            propertyId: editForm.propertyId,
+            unitId: editForm.unitId || null,
+            leaseStartDate: editForm.leaseStartDate,
+            leaseEndDate: editForm.leaseEndDate,
+            rentAmount: editForm.rentAmount
+          })
+        });
+        
+        if (!leaseResponse.ok) {
+          throw new Error('Failed to update lease dates');
+        }
+      }
+      
+      setQuickActionDialog(false);
+      setSelectedTenant(null);
+      setSelectedAction(null);
+      fetchData();
+      alert('Tenant updated successfully!');
+    } catch (error) {
+      setError(error.message || 'Failed to update tenant');
     }
   };
 
@@ -761,51 +856,378 @@ export default function ModernTenantDashboard() {
           )}
           
           {selectedAction === 'view' && selectedTenant && (
-            <Stack spacing={2} sx={{ mt: 2 }}>
-              <Typography variant="h6">
-                {selectedTenant.firstName} {selectedTenant.lastName}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {selectedTenant.email}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {selectedTenant.phone}
-              </Typography>
-              
-              <Divider />
-              
-              <Typography variant="subtitle1">Properties</Typography>
-              {selectedTenant.assignments?.map((assignment, index) => (
-                <Box key={index}>
-                  <Typography variant="body2">
-                    {assignment.propertyName} - ${assignment.rent}/month
+            <Box sx={{ mt: 2 }}>
+              <Tabs value={selectedTab} onChange={(e, newValue) => setSelectedTab(newValue)} sx={{ mb: 3 }}>
+                <Tab label="Overview" />
+                <Tab label="Lease History" />
+                <Tab label="Documents" />
+                <Tab label="Payments" />
+                <Tab label="Maintenance" />
+              </Tabs>
+
+              {selectedTab === 0 && (
+                <Stack spacing={3}>
+                  {/* Basic Information */}
+                  <Paper elevation={1} sx={{ p: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      <PersonAddIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      Basic Information
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">Name</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {selectedTenant.firstName} {selectedTenant.lastName}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">Email</Typography>
+                        <Typography variant="body1">
+                          {selectedTenant.email}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">Phone</Typography>
+                        <Typography variant="body1">
+                          {selectedTenant.phone || 'Not provided'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">Status</Typography>
+                        <Chip
+                          label={getTenantStatus(selectedTenant)}
+                          color={getStatusColor(getTenantStatus(selectedTenant))}
+                          size="small"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Paper>
+
+                  {/* Current Property Assignment */}
+                  <Paper elevation={1} sx={{ p: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      <HomeIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      Current Property Assignment
+                    </Typography>
+                    {selectedTenant.assignments?.map((assignment, index) => (
+                      <Box key={index} sx={{ mb: 2 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Property</Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                              {assignment.propertyName}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Unit</Typography>
+                            <Typography variant="body1">
+                              {assignment.unitNumber ? `Unit ${assignment.unitNumber}` : 'Single Family'}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Rent Amount</Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium', color: 'success.main' }}>
+                              ${assignment.rent}/month
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Assignment Date</Typography>
+                            <Typography variant="body1">
+                              {new Date(assignment.createdAt).toLocaleDateString()}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                  </Paper>
+
+                  {/* Quick Stats */}
+                  <Paper elevation={1} sx={{ p: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      <AssessmentIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      Quick Statistics
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <Box textAlign="center">
+                          <Typography variant="h4" color="primary.main">
+                            {selectedTenant.leaseAgreements?.length || 0}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Total Leases
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Box textAlign="center">
+                          <Typography variant="h4" color="success.main">
+                            {selectedTenant.payments?.filter(p => p.status === 'PAID').length || 0}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Paid Payments
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Box textAlign="center">
+                          <Typography variant="h4" color="warning.main">
+                            {selectedTenant.payments?.filter(p => p.status !== 'PAID').length || 0}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Outstanding
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Stack>
+              )}
+
+              {selectedTab === 1 && (
+                <Stack spacing={2}>
+                  <Typography variant="h6" gutterBottom>
+                    <AssignmentIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Lease History
                   </Typography>
-                </Box>
-              ))}
-            </Stack>
+                  {selectedTenant.leaseAgreements && selectedTenant.leaseAgreements.length > 0 ? (
+                    selectedTenant.leaseAgreements.map((lease, index) => (
+                      <Paper key={index} elevation={1} sx={{ p: 2 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Lease Period</Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                              {new Date(lease.leaseStartDate).toLocaleDateString()} - {new Date(lease.leaseEndDate).toLocaleDateString()}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Rent Amount</Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium', color: 'success.main' }}>
+                              ${lease.rentAmount}/month
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Status</Typography>
+                            <Chip
+                              label={new Date(lease.leaseEndDate) > new Date() ? 'Active' : 'Expired'}
+                              color={new Date(lease.leaseEndDate) > new Date() ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary">Days Remaining</Typography>
+                            <Typography variant="body1">
+                              {Math.max(0, Math.ceil((new Date(lease.leaseEndDate) - new Date()) / (1000 * 60 * 60 * 24)))} days
+                            </Typography>
+                          </Grid>
+                          {lease.signedLease && (
+                            <Grid item xs={12}>
+                              <Typography variant="body2" color="text.secondary">Signed Lease</Typography>
+                              <Chip
+                                icon={<CheckCircleIcon />}
+                                label="Lease Signed"
+                                color="success"
+                                size="small"
+                              />
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Alert severity="info">
+                      No lease agreements found for this tenant.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+
+              {selectedTab === 2 && (
+                <Stack spacing={2}>
+                  <Typography variant="h6" gutterBottom>
+                    <CloudUploadIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Documents
+                  </Typography>
+                  {selectedTenant.documents && selectedTenant.documents.length > 0 ? (
+                    selectedTenant.documents.map((doc, index) => (
+                      <Paper key={index} elevation={1} sx={{ p: 2 }}>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid item xs={12} sm={8}>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                              {doc.documentType || 'Document'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Uploaded: {new Date(doc.createdAt).toLocaleDateString()}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={4} textAlign="right">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<VisibilityIcon />}
+                            >
+                              View
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              sx={{ ml: 1 }}
+                            >
+                              Download
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Alert severity="info">
+                      No documents uploaded for this tenant.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+
+              {selectedTab === 3 && (
+                <Stack spacing={2}>
+                  <Typography variant="h6" gutterBottom>
+                    <PaymentIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Payment History
+                  </Typography>
+                  {selectedTenant.payments && selectedTenant.payments.length > 0 ? (
+                    selectedTenant.payments.map((payment, index) => (
+                      <Paper key={index} elevation={1} sx={{ p: 2 }}>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                              ${payment.amount}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Due: {new Date(payment.dueDate).toLocaleDateString()}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={3}>
+                            <Chip
+                              label={payment.status}
+                              color={payment.status === 'PAID' ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={3} textAlign="right">
+                            {payment.paidDate && (
+                              <Typography variant="body2" color="text.secondary">
+                                Paid: {new Date(payment.paidDate).toLocaleDateString()}
+                              </Typography>
+                            )}
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Alert severity="info">
+                      No payment history found for this tenant.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+
+              {selectedTab === 4 && (
+                <Stack spacing={2}>
+                  <Typography variant="h6" gutterBottom>
+                    <AssignmentIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Maintenance Requests
+                  </Typography>
+                  {selectedTenant.maintenanceRequests && selectedTenant.maintenanceRequests.length > 0 ? (
+                    selectedTenant.maintenanceRequests.map((request, index) => (
+                      <Paper key={index} elevation={1} sx={{ p: 2 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={8}>
+                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                              {request.title || 'Maintenance Request'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {request.description}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Submitted: {new Date(request.createdAt).toLocaleDateString()}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={4} textAlign="right">
+                            <Chip
+                              label={request.status || 'Pending'}
+                              color={
+                                request.status === 'COMPLETED' ? 'success' : 
+                                request.status === 'IN_PROGRESS' ? 'warning' : 'default'
+                              }
+                              size="small"
+                            />
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Alert severity="info">
+                      No maintenance requests found for this tenant.
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+            </Box>
           )}
           
           {selectedAction === 'edit' && selectedTenant && (
             <Stack spacing={2} sx={{ mt: 2 }}>
               <TextField
                 label="First Name"
-                defaultValue={selectedTenant.firstName}
+                value={editForm.firstName}
+                onChange={(e) => setEditForm({...editForm, firstName: e.target.value})}
                 fullWidth
               />
               <TextField
                 label="Last Name"
-                defaultValue={selectedTenant.lastName}
+                value={editForm.lastName}
+                onChange={(e) => setEditForm({...editForm, lastName: e.target.value})}
                 fullWidth
               />
               <TextField
                 label="Email"
                 type="email"
-                defaultValue={selectedTenant.email}
+                value={editForm.email}
+                onChange={(e) => setEditForm({...editForm, email: e.target.value})}
                 fullWidth
               />
               <TextField
                 label="Phone"
-                defaultValue={selectedTenant.phone}
+                value={editForm.phone}
+                onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                fullWidth
+              />
+              
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" gutterBottom>Lease Information</Typography>
+              
+              <TextField
+                label="Lease Start Date"
+                type="date"
+                value={editForm.leaseStartDate}
+                onChange={(e) => setEditForm({...editForm, leaseStartDate: e.target.value})}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <TextField
+                label="Lease End Date"
+                type="date"
+                value={editForm.leaseEndDate}
+                onChange={(e) => setEditForm({...editForm, leaseEndDate: e.target.value})}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <TextField
+                label="Rent Amount"
+                type="number"
+                value={editForm.rentAmount}
+                onChange={(e) => setEditForm({...editForm, rentAmount: e.target.value})}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                }}
                 fullWidth
               />
             </Stack>
@@ -895,7 +1317,10 @@ export default function ModernTenantDashboard() {
               {removingTenant ? 'Removing...' : 'Remove Tenant'}
             </Button>
           ) : (
-            <Button variant="contained">
+            <Button 
+              variant="contained"
+              onClick={selectedAction === 'edit' ? handleSaveEdit : undefined}
+            >
               {selectedAction === 'message' && 'Send'}
               {selectedAction === 'payment' && 'Record'}
               {selectedAction === 'edit' && 'Save'}
@@ -973,49 +1398,83 @@ export default function ModernTenantDashboard() {
                         <InputLabel>Property *</InputLabel>
                         <Select
                           value={tenantForm.propertyId}
-                                                      onChange={(e) => {
-                              const selectedProperty = properties.find(p => p.id === e.target.value);
-                              let defaultRent = '';
-                              
-                              if (selectedProperty) {
-                                if (selectedProperty.type === 'single-family') {
-                                  // For single family, use property rent
-                                  defaultRent = selectedProperty.rent || '';
-                                  console.log(`Auto-populating rent for single family property: $${defaultRent}`);
-                                } else if (selectedProperty.type === 'multi-family') {
-                                  // For multi-family, don't set rent until unit is selected
-                                  defaultRent = '';
-                                  console.log('Multi-family property selected - rent will be set when unit is chosen');
-                                }
+                          onChange={(e) => {
+                            const selectedProperty = properties.find(p => p.id === e.target.value);
+                            let defaultRent = '';
+                            
+                            if (selectedProperty) {
+                              if (selectedProperty.type === 'single-family') {
+                                // For single family, use property rent
+                                defaultRent = selectedProperty.rent || '';
+                                console.log(`Auto-populating rent for single family property: $${defaultRent}`);
+                              } else if (selectedProperty.type === 'multi-family') {
+                                // For multi-family, don't set rent until unit is selected
+                                defaultRent = '';
+                                console.log('Multi-family property selected - rent will be set when unit is chosen');
                               }
-                              
-                              setTenantForm({
-                                ...tenantForm, 
-                                propertyId: e.target.value,
-                                rentAmount: defaultRent,
-                                unitId: '' // Reset unit when property changes
-                              });
-                            }}
+                            }
+                            
+                            setTenantForm({
+                              ...tenantForm, 
+                              propertyId: e.target.value,
+                              rentAmount: defaultRent,
+                              unitId: '' // Reset unit when property changes
+                            });
+                          }}
                         >
-                          {properties.map((property) => (
-                            <MenuItem key={property.id} value={property.id}>
-                              <Box>
-                                <Typography variant="body1">
-                                  {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
-                                </Typography>
-                                {property.type === 'single-family' && property.rent && (
-                                  <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>
-                                    Rent: ${property.rent}/month
+                          {/* Available properties first */}
+                          {properties
+                            .filter(property => property.isAvailable !== false)
+                            .map((property) => (
+                              <MenuItem key={property.id} value={property.id}>
+                                <Box>
+                                  <Typography variant="body1">
+                                    {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
                                   </Typography>
-                                )}
-                                {property.type === 'multi-family' && property.units && property.units.length > 0 && (
-                                  <Typography variant="body2" color="text.secondary">
-                                    {property.units.length} unit{property.units.length > 1 ? 's' : ''} available
+                                  {property.type === 'single-family' && property.rent && (
+                                    <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>
+                                      Rent: ${property.rent}/month
+                                    </Typography>
+                                  )}
+                                  {property.type === 'multi-family' && property.units && property.units.length > 0 && (
+                                    <Typography variant="body2" color="text.secondary">
+                                      {property.units.filter(unit => unit.isAvailable !== false).length} unit{property.units.filter(unit => unit.isAvailable !== false).length > 1 ? 's' : ''} available
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </MenuItem>
+                            ))}
+                          
+                          {/* Divider */}
+                          {properties.some(p => p.isAvailable === false) && (
+                            <Divider sx={{ my: 1 }} />
+                          )}
+                          
+                          {/* Unavailable properties at the bottom */}
+                          {properties
+                            .filter(property => property.isAvailable === false)
+                            .map((property) => (
+                              <MenuItem 
+                                key={property.id} 
+                                value={property.id}
+                                disabled
+                                sx={{ opacity: 0.6 }}
+                              >
+                                <Box>
+                                  <Typography variant="body1" sx={{ textDecoration: 'line-through' }}>
+                                    {property.name} ({property.type === 'single-family' ? 'Single Family' : 'Multi Family'})
                                   </Typography>
-                                )}
-                              </Box>
-                            </MenuItem>
-                          ))}
+                                  <Typography variant="body2" color="error.main">
+                                    Currently occupied by {property.activeTenant || 'Unknown Tenant'}
+                                  </Typography>
+                                  {property.leaseEndDate && (
+                                    <Typography variant="body2" color="text.secondary">
+                                      Lease ends: {new Date(property.leaseEndDate).toLocaleDateString()}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </MenuItem>
+                            ))}
                         </Select>
                       </FormControl>
                       
@@ -1040,9 +1499,11 @@ export default function ModernTenantDashboard() {
                               });
                             }}
                           >
+                            {/* Available units first */}
                             {properties
                               .find(p => p.id === tenantForm.propertyId)
-                              ?.units?.map((unit) => (
+                              ?.units?.filter(unit => unit.isAvailable !== false)
+                              .map((unit) => (
                                 <MenuItem key={unit.id} value={unit.id}>
                                   <Box>
                                     <Typography variant="body1">
@@ -1051,6 +1512,40 @@ export default function ModernTenantDashboard() {
                                     {unit.rent && (
                                       <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>
                                         Rent: ${unit.rent}/month
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                </MenuItem>
+                              ))}
+                            
+                            {/* Divider */}
+                            {properties
+                              .find(p => p.id === tenantForm.propertyId)
+                              ?.units?.some(unit => unit.isAvailable === false) && (
+                                <Divider sx={{ my: 1 }} />
+                              )}
+                            
+                            {/* Unavailable units at the bottom */}
+                            {properties
+                              .find(p => p.id === tenantForm.propertyId)
+                              ?.units?.filter(unit => unit.isAvailable === false)
+                              .map((unit) => (
+                                <MenuItem 
+                                  key={unit.id} 
+                                  value={unit.id}
+                                  disabled
+                                  sx={{ opacity: 0.6 }}
+                                >
+                                  <Box>
+                                    <Typography variant="body1" sx={{ textDecoration: 'line-through' }}>
+                                      Unit {unit.unitNumber}
+                                    </Typography>
+                                    <Typography variant="body2" color="error.main">
+                                      Currently occupied by {unit.activeTenant || 'Unknown Tenant'}
+                                    </Typography>
+                                    {unit.leaseEndDate && (
+                                      <Typography variant="body2" color="text.secondary">
+                                        Lease ends: {new Date(unit.leaseEndDate).toLocaleDateString()}
                                       </Typography>
                                     )}
                                   </Box>

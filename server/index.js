@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 5000;
 
 // Add this after other route requires
 const invitationsRouter = require('./routes/invitations');
+const rentTrackingRouter = require('./routes/rentTracking');
 
 // JWT secret (in production, use environment variable)
 const JWT_SECRET = 'your-secret-key-change-in-production';
@@ -113,7 +114,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Properties
 app.get('/api/properties', authenticateToken, async (req, res) => {
   try {
-    const properties = await db.getProperties();
+    const properties = await db.getProperties(req.user.userId);
     res.json(properties);
   } catch (error) {
     console.error('Error fetching properties:', error);
@@ -911,7 +912,7 @@ app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
     
     // Fetch all data in parallel
     const [properties, tenants, rentTracking] = await Promise.all([
-      db.getProperties(),
+      db.getProperties(req.user.userId),
       db.getAllTenants(req.user.userId),
       db.getTenantAssignmentsFlat(req.user.userId)
     ]);
@@ -919,24 +920,42 @@ app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
     // Calculate comprehensive statistics
     const totalProperties = properties.length;
     const totalTenants = tenants.length;
-    const activeTenants = tenants.filter(t => t.status === 'ACTIVE').length;
+    const activeTenants = tenants.filter(t => t.hasActiveLease).length;
     
-    // Financial calculations
+    // Financial calculations - properly calculate from payments data
     const totalMonthlyRent = rentTracking.reduce((sum, rent) => sum + (rent.rent || 0), 0);
-    const totalCollected = rentTracking.reduce((sum, rent) => sum + (rent.totalRentCollected || 0), 0);
-    const totalOutstanding = rentTracking.reduce((sum, rent) => sum + (rent.outstandingBalance || 0), 0);
+    
+    // Calculate collected and outstanding amounts from payments
+    let totalCollected = 0;
+    let totalOutstanding = 0;
+    let overdueAmount = 0;
+    let overdueTenants = 0;
+    
+    rentTracking.forEach(rent => {
+      const payments = rent.payments || [];
+      const paidPayments = payments.filter(p => p.status === 'PAID');
+      const unpaidPayments = payments.filter(p => p.status !== 'PAID');
+      
+      // Calculate collected amount
+      totalCollected += paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // Calculate outstanding amount
+      totalOutstanding += unpaidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // Calculate overdue amount
+      const overduePayments = unpaidPayments.filter(p => new Date(p.dueDate) < new Date());
+      overdueAmount += overduePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // Count overdue tenants
+      if (overduePayments.length > 0) {
+        overdueTenants++;
+      }
+    });
     
     // Occupancy calculations
     const totalUnits = properties.reduce((sum, prop) => sum + (prop.units?.length || 1), 0);
     const occupiedUnits = rentTracking.length;
     const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits * 100).toFixed(1) : 0;
-    
-    // Overdue calculations
-    const overdueTenants = rentTracking.filter(rent => rent.overduePayments > 0).length;
-    const overdueAmount = rentTracking.reduce((sum, rent) => {
-      const overduePayments = rent.payments?.filter(p => !p.paid && new Date(p.dueDate) < new Date()) || [];
-      return sum + overduePayments.reduce((pSum, p) => pSum + (p.amount || 0), 0);
-    }, 0);
 
     // Property type breakdown
     const singleFamilyProperties = properties.filter(p => p.type === 'single-family').length;
@@ -945,7 +964,7 @@ app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
     // Recent activity
     const recentPayments = rentTracking
       .flatMap(rent => rent.payments || [])
-      .filter(payment => payment.paid && payment.paidDate)
+      .filter(payment => payment.status === 'PAID' && payment.paidDate)
       .sort((a, b) => new Date(b.paidDate) - new Date(a.paidDate))
       .slice(0, 5);
 
@@ -975,17 +994,38 @@ app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
       },
       properties: properties.map(property => {
         const propertyRentData = rentTracking.filter(rent => rent.propertyId === property.id);
-        const propertyTenants = tenants.filter(tenant => 
-          tenant.tenantUnits?.some(tu => tu.propertyId === property.id)
+        // Count tenants assigned to this property with an active lease
+        const now = new Date();
+        const propertyTenants = propertyRentData.filter(rent =>
+          !rent.leaseEnd || new Date(rent.leaseEnd) > now
         );
+        
+        // Calculate property-specific financial data
+        let propertyTotalCollected = 0;
+        let propertyTotalOutstanding = 0;
+        let propertyOverdueTenants = 0;
+        
+        propertyRentData.forEach(rent => {
+          const payments = rent.payments || [];
+          const paidPayments = payments.filter(p => p.status === 'PAID');
+          const unpaidPayments = payments.filter(p => p.status !== 'PAID');
+          
+          propertyTotalCollected += paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+          propertyTotalOutstanding += unpaidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+          
+          const overduePayments = unpaidPayments.filter(p => new Date(p.dueDate) < new Date());
+          if (overduePayments.length > 0) {
+            propertyOverdueTenants++;
+          }
+        });
         
         return {
           ...property,
           tenantCount: propertyTenants.length,
           totalRent: propertyRentData.reduce((sum, rent) => sum + (rent.rent || 0), 0),
-          totalCollected: propertyRentData.reduce((sum, rent) => sum + (rent.totalRentCollected || 0), 0),
-          totalOutstanding: propertyRentData.reduce((sum, rent) => sum + (rent.outstandingBalance || 0), 0),
-          overdueTenants: propertyRentData.filter(rent => rent.overduePayments > 0).length
+          totalCollected: propertyTotalCollected,
+          totalOutstanding: propertyTotalOutstanding,
+          overdueTenants: propertyOverdueTenants
         };
       }),
       tenants: tenants.map(tenant => {
@@ -1008,6 +1048,9 @@ app.get('/api/dashboard/integrated', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch integrated dashboard data' });
   }
 });
+
+// Rent Tracking endpoint
+app.use('/api/rent-tracking', authenticateToken, rentTrackingRouter);
 
 // Start server
 app.listen(PORT, () => {

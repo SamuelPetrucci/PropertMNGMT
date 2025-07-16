@@ -3,7 +3,7 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
   padding: 20px;
 }
 
@@ -57,7 +57,7 @@
 .auth-button {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -70,7 +70,7 @@
 
 .auth-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 8px 25px rgba(33, 150, 243, 0.3);
 }
 
 .auth-button:disabled {
@@ -143,6 +143,55 @@
   margin-bottom: 0;
 }
 
+.demo-section {
+  margin-bottom: 20px;
+}
+
+.demo-section h5 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid #e1e5e9;
+  padding-bottom: 5px;
+}
+
+.demo-tip {
+  margin-top: 15px;
+  padding: 10px;
+  background: #e3f2fd;
+  border-radius: 6px;
+  border-left: 4px solid #2196f3;
+  font-size: 13px;
+  color: #1976d2;
+}
+
+.quick-login-btn {
+  margin-left: 10px;
+  padding: 4px 8px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.quick-login-btn:hover {
+  background: #45a049;
+}
+
+.demo-account {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #555;
+  font-family: 'Courier New', monospace;
+}
+
 /* Responsive design */
 @media (max-width: 480px) {
   .auth-card {
@@ -158,4 +207,66 @@
   .form-group select {
     font-size: 16px; /* Prevents zoom on iOS */
   }
+}
+
+.nif-logo-title {
+  text-align: center;
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-bottom: 18px;
+  margin-top: 0;
+  background: none;
+  color: inherit;
+}
+
+.nif-logo-main {
+  font-size: 2.5rem;
+  font-weight: 900;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #1976d2 0%, #2196f3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-fill-color: transparent;
+  color: #1976d2;
+}
+
+.nif-logo-sub {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #b0b6be !important;
+  margin-left: 8px;
+  letter-spacing: 1px;
+  opacity: 1;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  -webkit-text-fill-color: initial !important;
+  background-clip: initial !important;
+  text-fill-color: initial !important;
+}
+
+/* Main App Header Title (for AppBar) */
+.main-header-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: none;
+  color: #fff;
+}
+.main-header-main {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+  margin-right: 8px;
+}
+.main-header-sub {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #bbdefb;
+  letter-spacing: 1px;
+  opacity: 0.92;
 } 

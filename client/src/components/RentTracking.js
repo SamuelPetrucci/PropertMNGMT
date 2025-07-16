@@ -29,7 +29,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  InputAdornment
+  InputAdornment,
+  Snackbar,
+  Alert as MuiAlert
 } from '@mui/material';
 import {
   Info as InfoIcon,
@@ -43,8 +45,10 @@ import {
   Refresh as RefreshIcon,
   FilterList as FilterIcon
 } from '@mui/icons-material';
+import { useRefresh } from './RefreshContext';
 
 export default function RentTracking() {
+  const { refreshTrigger, triggerRefresh } = useRefresh();
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export default function RentTracking() {
   const [expanded, setExpanded] = useState({});
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterProperty, setFilterProperty] = useState('all');
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   // Enhanced tenant form state
   const [tenantForm, setTenantForm] = useState({
@@ -80,6 +84,8 @@ export default function RentTracking() {
       const token = localStorage.getItem('token');
       const apiBaseUrl = getApiBaseUrl();
       
+      console.log('Fetching rent tracking data from:', `${apiBaseUrl}/api/rent-tracking`);
+      
       // Fetch all data in parallel
       const [rentTrackingRes, tenantsRes, propertiesRes] = await Promise.all([
         fetch(`${apiBaseUrl}/api/rent-tracking`, {
@@ -93,6 +99,12 @@ export default function RentTracking() {
         })
       ]);
 
+      console.log('API Responses:', {
+        rentTracking: { ok: rentTrackingRes.ok, status: rentTrackingRes.status },
+        tenants: { ok: tenantsRes.ok, status: tenantsRes.status },
+        properties: { ok: propertiesRes.ok, status: propertiesRes.status }
+      });
+
       if (rentTrackingRes.ok && tenantsRes.ok && propertiesRes.ok) {
         const [rentData, tenantsData, propertiesData] = await Promise.all([
           rentTrackingRes.json(),
@@ -100,16 +112,27 @@ export default function RentTracking() {
           propertiesRes.json()
         ]);
 
+        console.log('Fetched data:', {
+          rentData: rentData.length,
+          tenantsData: tenantsData.length,
+          propertiesData: propertiesData.length
+        });
+
         // Merge data from all sources
         const integratedData = mergeRentTrackingData(rentData, tenantsData, propertiesData);
+        console.log('Integrated data:', integratedData.length, 'tenants');
         setTenants(integratedData);
         setProperties(propertiesData);
       } else {
-        throw new Error('Failed to fetch data');
+        const errorDetails = [];
+        if (!rentTrackingRes.ok) errorDetails.push(`Rent tracking: ${rentTrackingRes.status}`);
+        if (!tenantsRes.ok) errorDetails.push(`Tenants: ${tenantsRes.status}`);
+        if (!propertiesRes.ok) errorDetails.push(`Properties: ${propertiesRes.status}`);
+        throw new Error(`Failed to fetch data: ${errorDetails.join(', ')}`);
       }
     } catch (err) {
       console.error('Error fetching integrated data:', err);
-      setError('Could not fetch data');
+      setError(`Could not fetch data: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -128,13 +151,17 @@ export default function RentTracking() {
   // Merge data from rent tracking, tenants, and properties
   const mergeRentTrackingData = (rentData, tenantsData, propertiesData) => {
     const propertyMap = new Map(propertiesData.map(p => [p.id, p]));
-    
     return rentData.map(rentItem => {
       const property = propertyMap.get(rentItem.propertyId);
       const tenant = tenantsData.find(t => t.id === rentItem.tenantId);
-      
+      // Normalize payments: ensure each payment has a boolean 'paid' field
+      const normalizedPayments = (rentItem.payments || []).map(p => ({
+        ...p,
+        paid: p.status === 'PAID',
+      }));
       return {
         ...rentItem,
+        payments: normalizedPayments,
         propertyName: property?.name || 'Unknown Property',
         propertyAddress: property?.address || '',
         propertyType: property?.type || 'unknown',
@@ -144,12 +171,12 @@ export default function RentTracking() {
         tenantPhone: tenant?.phone || '',
         tenantStatus: tenant?.status || 'INACTIVE',
         // Enhanced payment tracking
-        totalPayments: rentItem.payments?.length || 0,
-        paidPayments: rentItem.payments?.filter(p => p.paid)?.length || 0,
-        overduePayments: rentItem.payments?.filter(p => !p.paid && new Date(p.dueDate) < new Date())?.length || 0,
+        totalPayments: normalizedPayments.length,
+        paidPayments: normalizedPayments.filter(p => p.paid).length,
+        overduePayments: normalizedPayments.filter(p => !p.paid && new Date(p.dueDate) < new Date()).length,
         // Financial summary
-        totalRentCollected: rentItem.payments?.filter(p => p.paid).reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
-        outstandingBalance: rentItem.payments?.filter(p => !p.paid).reduce((sum, p) => sum + (p.amount || 0), 0) || 0
+        totalRentCollected: normalizedPayments.filter(p => p.paid).reduce((sum, p) => sum + (p.amount || 0), 0) || 0,
+        outstandingBalance: normalizedPayments.filter(p => !p.paid).reduce((sum, p) => sum + (p.amount || 0), 0) || 0
       };
     });
   };
@@ -194,7 +221,7 @@ export default function RentTracking() {
 
       if (response.ok) {
         handleCloseAddDialog();
-        setRefreshTrigger(prev => prev + 1);
+        triggerRefresh();
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to create tenant');
@@ -212,39 +239,56 @@ export default function RentTracking() {
 
   const handleTogglePayment = async (tenant, paymentIdx) => {
     try {
+      console.log('Toggling payment for tenant:', tenant.tenantFirstName, tenant.tenantLastName);
+      console.log('Payment index:', paymentIdx);
+      
       const months = generateMonthList(tenant.leaseStart, tenant.leaseEnd);
       const mergedPayments = mergePaymentsWithMonths(months, tenant.payments);
       const payment = mergedPayments[paymentIdx];
       
-      if (!payment) return;
+      if (!payment) {
+        console.error('No payment found at index:', paymentIdx);
+        setSnackbar({ open: true, message: 'Payment not found.', severity: 'error' });
+        return;
+      }
+      
+      console.log('Payment to toggle:', payment);
       
       const token = localStorage.getItem('token');
       const apiBaseUrl = getApiBaseUrl();
       const isPaid = !payment.paid;
       const paidDate = isPaid ? new Date().toISOString().slice(0, 10) : null;
-      
       const tenantId = tenant.tenantId || tenant.id;
+      
+      console.log('Payment toggle details:', {
+        isPaid,
+        paidDate,
+        tenantId,
+        paymentId: payment.id,
+        dueDate: payment.dueDate,
+        amount: tenant.rent
+      });
+      
+      let backendSuccess = false;
+      let response;
       
       if (payment.id) {
         // Update existing payment
-        const response = await fetch(`${apiBaseUrl}/api/rent-tracking/payments/${payment.id}`, {
+        console.log('Updating existing payment:', payment.id);
+        response = await fetch(`${apiBaseUrl}/api/rent-tracking/payments/${payment.id}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({
-            paid: isPaid,
-            paidDate: paidDate
-          })
+          body: JSON.stringify({ paid: isPaid, paidDate: paidDate })
         });
-        
-        if (!response.ok) {
-          throw new Error('Failed to update payment');
-        }
+        backendSuccess = response.ok;
+        console.log('Update response:', { ok: response.ok, status: response.status });
       } else {
         // Create new payment
-        const response = await fetch(`${apiBaseUrl}/api/rent-tracking/payments`, {
+        console.log('Creating new payment');
+        response = await fetch(`${apiBaseUrl}/api/rent-tracking/payments`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -260,33 +304,50 @@ export default function RentTracking() {
             paidDate: paidDate
           })
         });
-        
-        if (!response.ok) {
-          throw new Error('Failed to create payment');
-        }
+        backendSuccess = response.ok;
+        console.log('Create response:', { ok: response.ok, status: response.status });
       }
       
-      // Update local state
+      if (!backendSuccess) {
+        const errorText = await response.text();
+        console.error('Backend error:', errorText);
+        throw new Error(`Backend error: ${response.status} - ${errorText}`);
+      }
+      
+      // Optimistically update local state
       const updatedPayments = mergedPayments.map((p, idx) =>
         idx === paymentIdx
-          ? {
-              ...p,
-              paid: isPaid,
-              paidDate: paidDate
-            }
+          ? { ...p, paid: isPaid, paidDate: paidDate, amount: tenant.rent }
           : p
       );
+      
+      // Recalculate metrics for this tenant
+      const totalRentCollected = updatedPayments.filter(p => p.paid).reduce((sum, p) => sum + (p.amount || 0), 0);
+      const outstandingBalance = updatedPayments.filter(p => !p.paid).reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      console.log('Updated metrics:', { totalRentCollected, outstandingBalance });
       
       setTenants(ts => ts.map(t =>
         t.propertyId === tenant.propertyId && 
         (t.unitNumber === tenant.unitNumber || (t.type === 'single-family' && t.type === tenant.type))
-          ? { ...t, payments: updatedPayments }
+          ? { ...t, payments: updatedPayments, totalRentCollected, outstandingBalance }
           : t
       ));
       
+      setSnackbar({ 
+        open: true, 
+        message: `Payment marked as ${isPaid ? 'Paid' : 'Unpaid'}.`, 
+        severity: 'success' 
+      });
+      
     } catch (error) {
-      console.error('Error updating payment:', error);
-      setError('Failed to update payment status');
+      console.error('Error updating payment status:', error);
+      setSnackbar({ 
+        open: true, 
+        message: `Error updating payment: ${error.message}`, 
+        severity: 'error' 
+      });
+      // Don't trigger refresh on error - let user see the error first
     }
   };
 
@@ -444,7 +505,7 @@ export default function RentTracking() {
           </Select>
         </FormControl>
 
-        <IconButton onClick={() => setRefreshTrigger(prev => prev + 1)}>
+        <IconButton onClick={triggerRefresh}>
           <RefreshIcon />
         </IconButton>
       </Box>
@@ -676,6 +737,12 @@ export default function RentTracking() {
           <Button onClick={handleCreateTenant} variant="contained">Create Tenant</Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+        <MuiAlert elevation={6} variant="filled" onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity}>
+          {snackbar.message}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 } 

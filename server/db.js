@@ -921,6 +921,7 @@ const db = {
           orderBy: { dueDate: 'asc' }
         });
         rows.push({
+          tenantId: tenantUnit.tenant.id,
           tenant: `${tenantUnit.tenant.firstName || ''} ${tenantUnit.tenant.lastName || ''}`.trim() || tenantUnit.tenant.username,
           propertyName: property.name,
           propertyId: property.id,
@@ -959,6 +960,8 @@ const db = {
           unitId: userData.unitId ? parseInt(userData.unitId) : null,
           rent: userData.rentAmount ? Number(userData.rentAmount) : null,
           tenantName: `${userData.firstName} ${userData.lastName}`,
+          leaseStart: userData.leaseStartDate || null,
+          leaseEnd: userData.leaseEndDate || null,
         }
       });
       // Create a lease agreement for this tenant

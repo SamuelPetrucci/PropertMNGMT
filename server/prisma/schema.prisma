@@ -62,7 +62,7 @@ model Property {
   rent                Float? // <-- Added field for single-family rent
   
   // Relationships
-  owner       User          @relation("PropertyOwner", fields: [ownerId], references: [id])
+  owner       User          @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   units       Unit[]
   workOrders  WorkOrder[]
   payments    Payment[]
@@ -107,7 +107,7 @@ model TenantUnit {
   updatedAt  DateTime @updatedAt
 
   // Relationships
-  tenant    User      @relation("TenantUser", fields: [tenantId], references: [id])
+  tenant    User      @relation("TenantUser", fields: [tenantId], references: [id], onDelete: Cascade)
   unit      Unit?     @relation(fields: [unitId], references: [id])
   property  Property  @relation(fields: [propertyId], references: [id])
   workOrders WorkOrder[]
@@ -134,8 +134,8 @@ model WorkOrder {
   property    Property      @relation(fields: [propertyId], references: [id])
   unit        Unit?         @relation(fields: [unitId], references: [id])
   tenantUnit  TenantUnit?   @relation(fields: [tenantUnitId], references: [id])
-  createdBy   User          @relation("WorkOrderCreator", fields: [createdById], references: [id])
-  assignedTo  User?         @relation("WorkOrderAssignee", fields: [assignedToId], references: [id])
+  createdBy   User          @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignedTo  User?         @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
   maintenanceRequest MaintenanceRequest?
 
   @@map("work_orders")
@@ -155,7 +155,7 @@ model Payment {
   updatedAt  DateTime      @updatedAt
 
   // Relationships
-  tenant    User      @relation("PaymentTenant", fields: [tenantId], references: [id])
+  tenant    User      @relation("PaymentTenant", fields: [tenantId], references: [id], onDelete: Cascade)
   property  Property  @relation(fields: [propertyId], references: [id])
   unit      Unit?     @relation(fields: [unitId], references: [id])
   leaseAgreements LeaseAgreement[]
@@ -229,7 +229,7 @@ model StandaloneProject {
   updatedAt   DateTime      @updatedAt
 
   // Relationships
-  owner   User         @relation("StandaloneProjectOwner", fields: [ownerId], references: [id])
+  owner   User         @relation("StandaloneProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   jobs    ProjectJob[]
   costs   ProjectCost[]
 
@@ -296,7 +296,7 @@ model LeaseAgreement {
   updatedAt         DateTime      @updatedAt
 
   // Relationships
-  tenant    User      @relation("LeaseTenant", fields: [tenantId], references: [id])
+  tenant    User      @relation("LeaseTenant", fields: [tenantId], references: [id], onDelete: Cascade)
   property  Property  @relation(fields: [propertyId], references: [id])
   unit      Unit?     @relation(fields: [unitId], references: [id])
   payments  Payment[]
@@ -318,8 +318,8 @@ model Communication {
   updatedAt   DateTime          @updatedAt
 
   // Relationships
-  sender    User @relation("CommunicationSender", fields: [senderId], references: [id])
-  receiver  User @relation("CommunicationReceiver", fields: [receiverId], references: [id])
+  sender    User @relation("CommunicationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver  User @relation("CommunicationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@map("communications")
 }
@@ -340,7 +340,7 @@ model MaintenanceRequest {
   updatedAt   DateTime      @updatedAt
 
   // Relationships
-  tenant    User      @relation("RequestTenant", fields: [tenantId], references: [id])
+  tenant    User      @relation("RequestTenant", fields: [tenantId], references: [id], onDelete: Cascade)
   property  Property  @relation(fields: [propertyId], references: [id])
   unit      Unit?     @relation(fields: [unitId], references: [id])
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
@@ -359,8 +359,8 @@ model TenantDocument {
   updatedAt   DateTime      @updatedAt
 
   // Relationships
-  tenant      User @relation("DocumentTenant", fields: [tenantId], references: [id])
-  uploadedByUser User @relation("DocumentUploader", fields: [uploadedBy], references: [id])
+  tenant      User @relation("DocumentTenant", fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedByUser User @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: Cascade)
 
   @@map("tenant_documents")
 }
